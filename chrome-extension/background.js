@@ -52,10 +52,15 @@ function normalizeRollPart(value) {
   return String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+function normalizeRollFormula(value) {
+  // Keep arithmetic operators significant: +5 and -5 are different rolls.
+  return String(value ?? "").toLowerCase().replace(/\s+/g, "");
+}
+
 function getCrossTabRollSignature(roll) {
   return [
     normalizeRollPart(roll.title),
-    normalizeRollPart(roll.formula),
+    normalizeRollFormula(roll.formula),
     String(roll.total ?? "")
   ].join("|");
 }
@@ -153,6 +158,10 @@ async function broadcastRoll(roll) {
   // to every open Foundry tab would therefore create one duplicate per tab.
   // Prefer a tab known to have the module ready, and stop at the first tab that
   // accepts the roll. A content script can queue a roll during module startup.
+  const forwardedRoll = { ...roll };
+  delete forwardedRoll.receivedAt;
+  delete forwardedRoll.sourceTabId;
+
   const candidates = tabs
     .filter(tab => tab.id && isSupportedFoundryUrl(tab.url))
     .sort((a, b) =>
@@ -166,7 +175,7 @@ async function broadcastRoll(roll) {
     try {
       const response = await chrome.tabs.sendMessage(
         tab.id,
-        { type: "DDB_ROLL_BRIDGE_ROLL", roll }
+        { type: "DDB_ROLL_BRIDGE_ROLL", roll: forwardedRoll }
       );
       if (!response?.ok) continue;
 
