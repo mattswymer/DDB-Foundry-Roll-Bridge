@@ -268,6 +268,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       for (const [id] of tracked.slice(MAX_TRACKED_FOUNDRY_TABS)) {
         delete STATE.foundryTabs[id];
       }
+
+      // Keep the popup's summary representative of the best available Foundry
+      // destination rather than whichever player's tab reported status last.
+      const bestTab = Object.values(STATE.foundryTabs).sort((a, b) =>
+        Number(!!b.moduleReady && !!b.isGM) - Number(!!a.moduleReady && !!a.isGM) ||
+        Number(!!b.moduleReady) - Number(!!a.moduleReady) ||
+        Number(b.lastSeenAt || 0) - Number(a.lastSeenAt || 0)
+      )[0];
+
+      if (bestTab) {
+        STATE.foundry = {
+          ...STATE.foundry,
+          detected: bestTab.detected,
+          moduleReady: bestTab.moduleReady,
+          isGM: bestTab.isGM,
+          url: bestTab.url,
+          title: bestTab.title,
+          lastSeenAt: bestTab.lastSeenAt
+        };
+      }
     }
 
     sendResponse({ ok: true });
