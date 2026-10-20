@@ -155,8 +155,12 @@ async function broadcastRoll(roll) {
   // accepts the roll. A content script can queue a roll during module startup.
   const candidates = tabs
     .filter(tab => tab.id && isSupportedFoundryUrl(tab.url))
-    .sort((a, b) => Number(!!STATE.foundryTabs[b.id]?.moduleReady) -
-                    Number(!!STATE.foundryTabs[a.id]?.moduleReady));
+    .sort((a, b) =>
+      Number(!!STATE.foundryTabs[b.id]?.moduleReady && !!STATE.foundryTabs[b.id]?.isGM) -
+      Number(!!STATE.foundryTabs[a.id]?.moduleReady && !!STATE.foundryTabs[a.id]?.isGM) ||
+      Number(!!STATE.foundryTabs[b.id]?.moduleReady) -
+      Number(!!STATE.foundryTabs[a.id]?.moduleReady)
+    );
 
   for (const tab of candidates) {
     try {
@@ -210,8 +214,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       STATE.counters.crossTabDuplicates = (STATE.counters.crossTabDuplicates || 0) + 1;
       STATE.ddb.lastAccepted = false;
     }
-    if (isNew) broadcastRoll(roll);
-    sendResponse({ ok: true, accepted: isNew });
+
+    if (!isNew) {
+      sendResponse({ ok: true, accepted: false, routed: false });
+      return true;
+    }
+
+    // Keep the message channel open until routing finishes so the MV3 service
+    // worker has an active event while asynchronous tab APIs are pending.
+    broadcastRoll(roll).then(sent => {
+      sendResponse({ ok: true, accepted: true, routed: sent > 0 });
+    }).catch(error => {
+      STATE.counters.foundryErrors++;
+      console.error("[DDB → Foundry Roll Bridge] Roll routing failed", error);
+      sendResponse({ ok: true, accepted: true, routed: false });
+    });
     return true;
   }
 
@@ -219,6 +236,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const status = {
       detected: !!message.status?.foundryDetected,
       moduleReady: !!message.status?.moduleReady,
+      isGM: message.status?.isGM === true,
       url: message.status?.url || sender?.tab?.url || null,
       title: message.status?.title || sender?.tab?.title || null,
       lastSeenAt: message.status?.updatedAt || Date.now(),
