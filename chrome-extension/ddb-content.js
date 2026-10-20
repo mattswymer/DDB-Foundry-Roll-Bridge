@@ -8,8 +8,8 @@
   let extensionContextInvalid = false;
   let statusInterval = null;
   let observer = null;
-  const PROCESS_DELAY_MS = 1400;
-  const PENDING_RECHECK_MS = 900;
+  const PROCESS_DELAY_MS = 300;
+  const PENDING_RECHECK_MS = 250;
   const MAX_PENDING_AGE_MS = 15000;
   const MAX_CARD_TEXT = 1400;
   // Suppress duplicate representations of the same completed roll across rerendered DOM nodes.
@@ -387,7 +387,12 @@
         // Wait for the animated/placeholder D&D Beyond roll card to resolve.
         // If it never resolves, drop it rather than posting a '?' result.
         if (Date.now() - firstSeenAt < MAX_PENDING_AGE_MS && document.contains(root)) {
-          const retry = setTimeout(() => queueRoot(root), PENDING_RECHECK_MS);
+          const retry = setTimeout(() => {
+            // Release the current queue entry before rescheduling; otherwise
+            // queueRoot sees the existing entry and returns without retrying.
+            pendingRoots.delete(key);
+            queueRoot(root);
+          }, PENDING_RECHECK_MS);
           pendingRoots.set(key, { root, timer: retry, firstSeenAt });
         } else {
           pendingRoots.delete(key);
