@@ -363,9 +363,14 @@
     if (extensionContextInvalid || !(root instanceof HTMLElement)) return;
     const key = getElementKey(root);
     const existing = pendingRoots.get(key);
-    clearTimeout(existing?.timer);
 
-    const firstSeenAt = existing?.firstSeenAt || Date.now();
+    // Mutations to the same roll card are frequent while DDB renders dice,
+    // totals, and labels. Do not restart its timer on every mutation: doing so
+    // can starve several rapid rolls until only the last card gets forwarded.
+    // The scheduled check below retries explicitly if the roll is still pending.
+    if (existing) return;
+
+    const firstSeenAt = Date.now();
     const timer = setTimeout(() => {
       if (processedElements.has(root)) {
         pendingRoots.delete(key);
