@@ -51,14 +51,24 @@ function getCrossTabRollSignature(roll) {
 
 function isCrossTabDuplicate(roll) {
   const now = Date.now();
-  for (const [signature, timestamp] of recentRollSignatures) {
-    if (now - timestamp > CROSS_TAB_DUPLICATE_WINDOW_MS) recentRollSignatures.delete(signature);
+  for (const [signature, entry] of recentRollSignatures) {
+    if (now - entry.timestamp > CROSS_TAB_DUPLICATE_WINDOW_MS) recentRollSignatures.delete(signature);
   }
 
   const signature = getCrossTabRollSignature(roll);
-  const previousAt = recentRollSignatures.get(signature);
-  if (previousAt && now - previousAt <= CROSS_TAB_DUPLICATE_WINDOW_MS) return true;
-  recentRollSignatures.set(signature, now);
+  const sourceTabId = roll.sourceTabId;
+  const previous = recentRollSignatures.get(signature);
+
+  // Never collapse two identical results from the same tab: those can be two
+  // legitimate rapid rolls. Only suppress a matching representation arriving
+  // from a different DDB tab within the cross-tab window.
+  if (previous && now - previous.timestamp <= CROSS_TAB_DUPLICATE_WINDOW_MS &&
+      sourceTabId != null && previous.sourceTabId != null &&
+      sourceTabId !== previous.sourceTabId) {
+    return true;
+  }
+
+  recentRollSignatures.set(signature, { timestamp: now, sourceTabId });
   return false;
 }
 
