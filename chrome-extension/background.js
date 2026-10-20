@@ -21,6 +21,7 @@ const STATE = {
     lastAckAt: null,
     lastAck: null
   },
+  foundryTabs: {},
   counters: {
     rollsSeen: 0,
     rollsAccepted: 0,
@@ -36,6 +37,15 @@ const MAX_SEEN = 200;
 // shared game-log roll. Deduplicate at the background level, across all tabs.
 const CROSS_TAB_DUPLICATE_WINDOW_MS = 1800;
 const MAX_RECENT_SIGNATURES = 300;
+const MAX_TRACKED_FOUNDRY_TABS = 100;
+const FOUNDRY_URL_PATTERNS = [
+  "https://forge-vtt.com/*",
+  "https://*.forge-vtt.com/*",
+  "http://localhost/*",
+  "http://127.0.0.1/*",
+  "https://localhost/*",
+  "https://127.0.0.1/*"
+];
 const recentRollSignatures = new Map();
 
 function normalizeRollPart(value) {
@@ -132,32 +142,42 @@ function rememberRoll(roll) {
 async function broadcastRoll(roll) {
   let tabs;
   try {
-    tabs = await chrome.tabs.query({});
+    tabs = await chrome.tabs.query({ url: FOUNDRY_URL_PATTERNS });
   } catch (error) {
     STATE.counters.foundryErrors++;
-    console.error("[DDB → Foundry Roll Bridge] Could not query tabs", error);
+    console.error("[DDB → Foundry Roll Bridge] Could not query Foundry tabs", error);
     return 0;
   }
-  let sent = 0;
 
-  for (const tab of tabs) {
-    if (!tab.id || !isSupportedFoundryUrl(tab.url)) continue;
+  // ChatMessage.create is broadcast to the whole Foundry world. Sending a roll
+  // to every open Foundry tab would therefore create one duplicate per tab.
+  // Prefer a tab known to have the module ready, and stop at the first tab that
+  // accepts the roll. A content script can queue a roll during module startup.
+  const candidates = tabs
+    .filter(tab => tab.id && isSupportedFoundryUrl(tab.url))
+    .sort((a, b) => Number(!!STATE.foundryTabs[b.id]?.moduleReady) -
+                    Number(!!STATE.foundryTabs[a.id]?.moduleReady));
+
+  for (const tab of candidates) {
     try {
-      // Let the Foundry content script decide whether the page is actually Foundry.
-      const response = await chrome.tabs.sendMessage(tab.id, { type: "DDB_ROLL_BRIDGE_ROLL", roll });
-      if (response?.ok) sent++;
-    } catch (_) {}
+      const response = await chrome.tabs.sendMessage(
+        tab.id,
+        { type: "DDB_ROLL_BRIDGE_ROLL", roll }
+      );
+      if (!response?.ok) continue;
+
+      STATE.counters.rollsForwarded++;
+      STATE.counters.foundryTabsReached = (STATE.counters.foundryTabsReached || 0) + 1;
+      STATE.foundry.lastForwardedAt = Date.now();
+      STATE.foundry.lastForwardedRollId = roll.id;
+      return 1;
+    } catch (_) {
+      // The tab may have navigated or its content script may not be available.
+      // Try the next eligible Foundry tab rather than failing the whole roll.
+    }
   }
 
-  if (sent > 0) {
-    // Count rolls routed to at least one Foundry tab, not tab deliveries.
-    STATE.counters.rollsForwarded++;
-    STATE.counters.foundryTabsReached = (STATE.counters.foundryTabsReached || 0) + sent;
-    STATE.foundry.lastForwardedAt = Date.now();
-    STATE.foundry.lastForwardedRollId = roll.id;
-  }
-
-  return sent;
+  return 0;
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -196,16 +216,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === "DDB_ROLL_BRIDGE_FOUNDRY_STATUS") {
-    STATE.foundry = {
-      ...STATE.foundry,
+    const status = {
       detected: !!message.status?.foundryDetected,
       moduleReady: !!message.status?.moduleReady,
       url: message.status?.url || sender?.tab?.url || null,
       title: message.status?.title || sender?.tab?.title || null,
       lastSeenAt: message.status?.updatedAt || Date.now(),
-      lastForwardedAt: message.status?.lastForwardedAt || STATE.foundry.lastForwardedAt,
-      lastForwardedRollId: message.status?.lastForwardedRollId || STATE.foundry.lastForwardedRollId
+      lastForwardedAt: message.status?.lastForwardedAt || null,
+      lastForwardedRollId: message.status?.lastForwardedRollId || null
     };
+
+    STATE.foundry = {
+      ...STATE.foundry,
+      ...status,
+      lastForwardedAt: status.lastForwardedAt || STATE.foundry.lastForwardedAt,
+      lastForwardedRollId: status.lastForwardedRollId || STATE.foundry.lastForwardedRollId
+    };
+
+    const tabId = sender?.tab?.id;
+    if (tabId != null) {
+      STATE.foundryTabs[tabId] = status;
+      const tracked = Object.entries(STATE.foundryTabs)
+        .sort((a, b) => Number(b[1].lastSeenAt || 0) - Number(a[1].lastSeenAt || 0));
+      for (const [id] of tracked.slice(MAX_TRACKED_FOUNDRY_TABS)) {
+        delete STATE.foundryTabs[id];
+      }
+    }
+
     sendResponse({ ok: true });
     return true;
   }
