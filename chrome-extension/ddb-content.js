@@ -14,7 +14,7 @@
   const MAX_CARD_TEXT = 1400;
   // Suppress duplicate representations of the same completed roll across rerendered DOM nodes.
   // A short window still permits a later legitimate roll with the same result.
-  const DUPLICATE_SIGNATURE_WINDOW_MS = 300;
+  const DUPLICATE_SIGNATURE_WINDOW_MS = 1800;
 
   function log(...args) {
     console.debug(`[${BRIDGE_NAME}]`, ...args);
@@ -317,9 +317,19 @@
     // one includes the character/action name in the "character" field and one
     // does not. Compare a punctuation-insensitive title plus formula and total,
     // rather than requiring the extracted character/title split to match.
-    const canonicalTitle = cleanText(roll.title).toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const canonicalText = cleanText(roll.title).toLowerCase();
+    // DDB sometimes exposes one result as "Scorching Ray: damage" and elsewhere
+    // as "SCORCHING RAY: DAMAGE 4 + 6". Normalize to the action category rather
+    // than the rendered title, which can include the dice breakdown.
+    const action = /\b(damage|to hit|attack)\b/.test(canonicalText)
+      ? ( /\b(damage)\b/.test(canonicalText) ? "damage" : "attack" )
+      : /\b(save|saving throw)\b/.test(canonicalText) ? "save"
+      : /\b(check|ability check)\b/.test(canonicalText) ? "check"
+      : canonicalText.replace(/\b\d+\b/g, "").replace(/[^a-z]+/g, "");
+    const character = cleanText(roll.character).toLowerCase().replace(/[^a-z0-9]+/g, "");
     const signature = hashText([
-      canonicalTitle,
+      character,
+      action,
       cleanText(roll.formula).toLowerCase().replace(/\s+/g, ""),
       String(roll.total)
     ].join("|"));
