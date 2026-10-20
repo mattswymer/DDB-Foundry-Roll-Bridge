@@ -34,7 +34,8 @@ const MAX_RECENT = 50;
 const MAX_SEEN = 200;
 // Multiple open D&D Beyond character tabs can independently observe the same
 // shared game-log roll. Deduplicate at the background level, across all tabs.
-const CROSS_TAB_DUPLICATE_WINDOW_MS = 3500;
+const CROSS_TAB_DUPLICATE_WINDOW_MS = 1800;
+const MAX_RECENT_SIGNATURES = 300;
 const recentRollSignatures = new Map();
 
 function normalizeRollPart(value) {
@@ -49,6 +50,26 @@ function getCrossTabRollSignature(roll) {
   ].join("|");
 }
 
+function getRollCharacterKey(roll) {
+  const character = normalizeRollPart(roll.character);
+  return character === normalizeRollPart("D&D Beyond") ? "" : character;
+}
+
+function isSupportedFoundryUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    return (
+      (parsed.protocol === "https:" &&
+        (host === "forge-vtt.com" || host.endsWith(".forge-vtt.com"))) ||
+      (parsed.protocol === "http:" &&
+        (host === "localhost" || host === "127.0.0.1"))
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
 function isCrossTabDuplicate(roll) {
   const now = Date.now();
   for (const [signature, entry] of recentRollSignatures) {
@@ -57,24 +78,34 @@ function isCrossTabDuplicate(roll) {
 
   const signature = getCrossTabRollSignature(roll);
   const sourceTabId = roll.sourceTabId;
-  const previous = recentRollSignatures.get(signature);
+  const character = getRollCharacterKey(roll);
+  const recentEntries = (recentRollSignatures.get(signature) || [])
+    .filter(entry => now - entry.timestamp <= CROSS_TAB_DUPLICATE_WINDOW_MS);
 
   // Never collapse two identical results from the same tab: those can be two
-  // legitimate rapid rolls. Only suppress a matching representation arriving
-  // from a different DDB tab within the cross-tab window.
-  if (previous && now - previous.timestamp <= CROSS_TAB_DUPLICATE_WINDOW_MS &&
-      sourceTabId != null && previous.sourceTabId != null &&
-      sourceTabId !== previous.sourceTabId) {
+  // legitimate rapid rolls. When both character names are known, also require
+  // them to match so identical checks by different characters are not confused.
+  const duplicate = recentEntries.some(entry =>
+    sourceTabId != null &&
+    entry.sourceTabId != null &&
+    sourceTabId !== entry.sourceTabId &&
+    (!character || !entry.character || character === entry.character)
+  );
+  if (duplicate) {
+    recentRollSignatures.set(signature, recentEntries);
     return true;
   }
 
-  recentRollSignatures.set(signature, { timestamp: now, sourceTabId });
+  recentEntries.push({ timestamp: now, sourceTabId, character });
+  recentRollSignatures.set(signature, recentEntries.slice(-10));
+  while (recentRollSignatures.size > MAX_RECENT_SIGNATURES) {
+    recentRollSignatures.delete(recentRollSignatures.keys().next().value);
+  }
   return false;
 }
 
 function rememberRoll(roll) {
   if (!roll || !roll.id) return false;
-  STATE.counters.rollsSeen++;
   STATE.ddb.lastRollAt = Date.now();
   STATE.ddb.lastRollId = roll.id;
 
@@ -97,11 +128,18 @@ function rememberRoll(roll) {
 }
 
 async function broadcastRoll(roll) {
-  const tabs = await chrome.tabs.query({});
+  let tabs;
+  try {
+    tabs = await chrome.tabs.query({});
+  } catch (error) {
+    STATE.counters.foundryErrors++;
+    console.error("[DDB → Foundry Roll Bridge] Could not query tabs", error);
+    return 0;
+  }
   let sent = 0;
 
   for (const tab of tabs) {
-    if (!tab.id || !tab.url) continue;
+    if (!tab.id || !isSupportedFoundryUrl(tab.url)) continue;
     try {
       // Let the Foundry content script decide whether the page is actually Foundry.
       const response = await chrome.tabs.sendMessage(tab.id, { type: "DDB_ROLL_BRIDGE_ROLL", roll });
@@ -110,7 +148,9 @@ async function broadcastRoll(roll) {
   }
 
   if (sent > 0) {
-    STATE.counters.rollsForwarded += sent;
+    // Count rolls routed to at least one Foundry tab, not tab deliveries.
+    STATE.counters.rollsForwarded++;
+    STATE.counters.foundryTabsReached = (STATE.counters.foundryTabsReached || 0) + sent;
     STATE.foundry.lastForwardedAt = Date.now();
     STATE.foundry.lastForwardedRollId = roll.id;
   }
@@ -141,6 +181,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     };
     // First deduplicate identical roll representations emitted by separate DDB
     // tabs, then apply the existing ID-based guard as a second layer.
+    STATE.counters.rollsSeen++;
     const duplicateAcrossTabs = isCrossTabDuplicate(roll);
     const isNew = duplicateAcrossTabs ? false : rememberRoll(roll);
     if (duplicateAcrossTabs) {
