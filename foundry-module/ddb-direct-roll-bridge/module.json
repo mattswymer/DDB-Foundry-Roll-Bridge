@@ -1,0 +1,21 @@
+{
+  "id": "ddb-direct-roll-bridge",
+  "title": "DDB Direct Roll Bridge",
+  "description": "Receives D&D Beyond rolls from the companion Chrome extension and mirrors them into Foundry chat.",
+  "version": "0.1.4",
+  "compatibility": {
+    "minimum": "11",
+    "verified": "13"
+  },
+  "authors": [
+    {
+      "name": "ChatGPT / Chris"
+    }
+  ],
+  "scripts": [
+    "scripts/receiver.js"
+  ],
+  "styles": [
+    "styles/roll-card.css"
+  ]
+}

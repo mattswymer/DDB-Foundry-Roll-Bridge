@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { width: 330px; margin: 0; padding: 14px; font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; }
+    h1 { font-size: 15px; margin: 0 0 10px; }
+    .card { border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 10px; background: rgba(255,255,255,.06); margin-bottom: 10px; }
+    .row { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin: 6px 0; font-size: 12px; }
+    .label { color: #cbd5e1; }
+    .pill { font-size: 11px; font-weight: 800; border-radius: 999px; padding: 3px 7px; background: #334155; color: #e2e8f0; white-space: nowrap; }
+    .ok { background: #14532d; color: #bbf7d0; }
+    .bad { background: #7f1d1d; color: #fecaca; }
+    .warn { background: #713f12; color: #fde68a; }
+    .muted { color: #94a3b8; font-size: 11px; word-break: break-word; }
+    button { width: 100%; border: 0; border-radius: 10px; background: #2563eb; color: white; padding: 9px; font-weight: 800; cursor: pointer; }
+    pre { white-space: pre-wrap; max-height: 130px; overflow: auto; background: #020617; border-radius: 8px; padding: 8px; font-size: 11px; color: #cbd5e1; }
+  </style>
+</head>
+<body>
+  <h1>DDB → Foundry Roll Bridge</h1>
+
+  <div class="card">
+    <div class="row"><span class="label">D&D Beyond tab</span><span id="ddbStatus" class="pill">checking</span></div>
+    <div id="ddbUrl" class="muted"></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><span class="label">Foundry tab</span><span id="foundryStatus" class="pill">checking</span></div>
+    <div class="row"><span class="label">Foundry module</span><span id="moduleStatus" class="pill">checking</span></div>
+    <div id="foundryUrl" class="muted"></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><span class="label">Rolls seen</span><span id="rollsSeen" class="pill">0</span></div>
+    <div class="row"><span class="label">Rolls forwarded</span><span id="rollsForwarded" class="pill">0</span></div>
+    <div class="row"><span class="label">Foundry acknowledgements</span><span id="acks" class="pill">0</span></div>
+    <div id="lastAck" class="muted"></div>
+  </div>
+
+  <button id="refresh">Refresh status</button>
+
+  <div class="card" style="margin-top:10px;">
+    <div class="label">Recent rolls</div>
+    <pre id="recent">None yet</pre>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

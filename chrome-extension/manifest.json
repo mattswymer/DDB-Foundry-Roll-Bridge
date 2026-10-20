@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "DDB \u2192 Foundry Roll Bridge",
+  "description": "Reads D&D Beyond game log rolls and mirrors them into an open Foundry VTT tab.",
+  "version": "0.1.4",
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.dndbeyond.com/*",
+    "https://dndbeyond.com/*",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.dndbeyond.com/*",
+        "https://dndbeyond.com/*"
+      ],
+      "js": [
+        "ddb-content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "foundry-content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "DDB \u2192 Foundry Roll Bridge",
+    "default_popup": "popup.html"
+  }
+}
