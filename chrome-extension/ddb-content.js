@@ -5,6 +5,9 @@
   const processedElements = new WeakSet();
   const pendingRoots = new Map();
   const MAX_SEEN = 300;
+  let extensionContextInvalid = false;
+  let statusInterval = null;
+  let observer = null;
   const PROCESS_DELAY_MS = 1400;
   const PENDING_RECHECK_MS = 900;
   const MAX_PENDING_AGE_MS = 15000;
@@ -17,8 +20,44 @@
     console.debug(`[${BRIDGE_NAME}]`, ...args);
   }
 
+  function stopBridge() {
+    if (extensionContextInvalid) return;
+    extensionContextInvalid = true;
+    try { observer?.disconnect(); } catch (_) {}
+    if (statusInterval !== null) clearInterval(statusInterval);
+    for (const pending of pendingRoots.values()) clearTimeout(pending.timer);
+    pendingRoots.clear();
+  }
+
+  function sendRuntimeMessage(message, callback) {
+    if (extensionContextInvalid) return false;
+    try {
+      if (!chrome?.runtime?.id) {
+        stopBridge();
+        return false;
+      }
+      chrome.runtime.sendMessage(message, response => {
+        try {
+          const error = chrome.runtime.lastError;
+          if (error && /extension context invalidated/i.test(error.message || "")) {
+            stopBridge();
+            return;
+          }
+        } catch (_) {
+          stopBridge();
+          return;
+        }
+        if (!extensionContextInvalid && typeof callback === "function") callback(response);
+      });
+      return true;
+    } catch (_) {
+      stopBridge();
+      return false;
+    }
+  }
+
   function sendStatus(extra = {}) {
-    chrome.runtime.sendMessage({
+    sendRuntimeMessage({
       type: "DDB_ROLL_BRIDGE_DDB_STATUS",
       status: {
         url: location.href,
@@ -26,7 +65,7 @@
         lastScanAt: Date.now(),
         ...extra
       }
-    }, () => void chrome.runtime.lastError);
+    });
   }
 
   function cleanText(value) {
@@ -43,11 +82,6 @@
       hash |= 0;
     }
     return Math.abs(hash).toString(36);
-  }
-
-  function maybeNumber(text) {
-    const match = String(text || "").match(/[-+]?\d+/);
-    return match ? Number(match[0]) : null;
   }
 
   function looksLikeRoll(el, text) {
@@ -274,7 +308,7 @@
   }
 
   function submitRoll(roll) {
-    if (!roll?.id || seen.has(roll.id)) return;
+    if (extensionContextInvalid || !roll?.id || seen.has(roll.id)) return;
 
     // D&D Beyond can represent one result with multiple nested elements and can
     // recreate those elements during rerenders. Element-based IDs alone do not
@@ -306,15 +340,20 @@
       seen.clear();
       ids.slice(-MAX_SEEN).forEach(id => seen.add(id));
     }
-    chrome.runtime.sendMessage({ type: "DDB_ROLL_BRIDGE_FOUND_ROLL", roll }, response => {
-      if (chrome.runtime.lastError) return;
-      sendStatus({ lastRollId: roll.id, lastRollAt: Date.now(), accepted: !!response?.accepted });
-      if (response?.accepted) log("Forwarded grouped roll", roll);
+    sendRuntimeMessage({ type: "DDB_ROLL_BRIDGE_FOUND_ROLL", roll }, response => {
+      sendStatus({
+        lastRollId: roll.id,
+        lastRollAt: Date.now(),
+        accepted: !!response?.accepted,
+        routed: !!response?.routed
+      });
+      if (response?.routed) log("Routed completed roll", { title: roll.title, total: roll.total });
+      else if (response?.accepted) log("Roll accepted but no Foundry tab confirmed routing", { title: roll.title, total: roll.total });
     });
   }
 
   function queueRoot(root) {
-    if (!(root instanceof HTMLElement)) return;
+    if (extensionContextInvalid || !(root instanceof HTMLElement)) return;
     const key = getElementKey(root);
     const existing = pendingRoots.get(key);
     clearTimeout(existing?.timer);
@@ -354,7 +393,7 @@
   }
 
   function scanNode(node) {
-    if (!(node instanceof HTMLElement)) return;
+    if (extensionContextInvalid || !(node instanceof HTMLElement)) return;
     const roots = new Map();
 
     const consider = el => {
@@ -374,7 +413,8 @@
     for (const root of roots.values()) queueRoot(root);
   }
 
-  const observer = new MutationObserver(mutations => {
+  observer = new MutationObserver(mutations => {
+    if (extensionContextInvalid) return;
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) scanNode(node);
 
@@ -392,9 +432,23 @@
   });
 
   function start() {
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
+    if (extensionContextInvalid || !document.body) return;
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["class", "data-roll-total", "data-roll", "data-character-name", "aria-label"]
+    });
     sendStatus();
-    setInterval(() => sendStatus(), 5000);
+    statusInterval = setInterval(() => {
+      if (extensionContextInvalid) {
+        clearInterval(statusInterval);
+        statusInterval = null;
+        return;
+      }
+      sendStatus();
+    }, 5000);
     log("Watching D&D Beyond page for completed grouped rolls");
     // Do not backfill the whole existing log on load; it can duplicate old messages.
   }
