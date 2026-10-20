@@ -8,7 +8,7 @@ A read-only bridge that watches completed D&D Beyond game-log rolls and mirrors 
 - Extracts the visible character, roll title, formula, dice summary, total, and raw card text when available.
 - Filters duplicate representations and cross-tab copies while keeping the duplicate window short enough to preserve rapid repeated rolls.
 - Routes each roll to **one** Foundry tab, preferring a tab whose module is ready and whose user is the GM.
-- Queues rolls briefly on the chosen page if the Foundry module is still starting.
+- Queues rolls on the chosen page during module startup for up to 60 seconds, then reports expired or player-session rolls instead of silently retaining them.
 - Shows connection, roll-routing, and Foundry acknowledgement diagnostics in the extension popup.
 
 ## What it does not do
@@ -39,8 +39,9 @@ Click the extension icon to inspect D&D Beyond detection, Foundry detection, mod
 
 - Corrected formula whitespace normalization.
 - Shortened local duplicate suppression to reduce false suppression of rapid repeated rolls.
-- Bounded and corrected cross-tab duplicate-cache cleanup; cross-tab matches include character context where available.
+- Bounded and corrected cross-tab duplicate-cache cleanup; cross-tab matches include character context where available and preserve formula operators.
 - Prevented a single roll from being sent to every open Foundry tab, avoiding duplicate chat messages in the same world.
 - Prioritized ready GM tabs and queued rolls during module startup.
 - Restricted content-script injection and host access to the supported sites.
 - Removed unused extension permissions and reduced raw roll data in error logs.
+- Improved the popup's Foundry summary so a player tab does not hide an available GM tab.
