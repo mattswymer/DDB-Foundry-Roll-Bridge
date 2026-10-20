@@ -4,6 +4,8 @@
   let moduleReady = false;
   let extensionContextInvalid = false;
   let statusInterval = null;
+  const pendingRolls = [];
+  const MAX_PENDING_ROLLS = 100;
 
   // Chrome invalidates existing content scripts when the extension is reloaded
   // or replaced. A stale script must stop messaging rather than throw every
@@ -68,16 +70,46 @@
     }));
   }
 
-  function forwardToFoundryPage(roll) {
-    if (!isFoundry) return false;
-
+  function dispatchRollToFoundry(roll) {
     // Do not inject inline scripts. Foundry's CSP blocks inline execution.
     // The Foundry module listens for this DOM event directly.
     document.dispatchEvent(new CustomEvent("DDB_DIRECT_ROLL_BRIDGE_ROLL", {
       detail: JSON.stringify(roll)
     }));
 
-    sendStatus({ lastForwardedRollId: roll?.id || null, lastForwardedAt: Date.now() });
+    sendStatus({
+      lastForwardedRollId: roll?.id || null,
+      lastForwardedAt: Date.now(),
+      pendingRollCount: pendingRolls.length
+    });
+  }
+
+  function flushPendingRolls() {
+    if (!isFoundry || !moduleReady || !pendingRolls.length) return;
+    const queued = pendingRolls.splice(0, pendingRolls.length);
+    for (const roll of queued) dispatchRollToFoundry(roll);
+    log("Flushed queued rolls after Foundry module became ready", queued.length);
+  }
+
+  function forwardToFoundryPage(roll) {
+    isFoundry = looksLikeFoundry();
+    if (!isFoundry || !roll?.id) return false;
+
+    if (!moduleReady) {
+      if (pendingRolls.some(pending => pending.id === roll.id)) return true;
+      if (pendingRolls.length >= MAX_PENDING_ROLLS) {
+        log("Rejected roll because the Foundry startup queue is full", roll.id);
+        return false;
+      }
+      pendingRolls.push(roll);
+      sendStatus({
+        lastQueuedRollId: roll.id,
+        pendingRollCount: pendingRolls.length
+      });
+      return true;
+    }
+
+    dispatchRollToFoundry(roll);
     return true;
   }
 
@@ -85,6 +117,7 @@
     moduleReady = true;
     let detail = {};
     try { detail = JSON.parse(event.detail || "{}"); } catch (_) {}
+    flushPendingRolls();
     sendStatus({ moduleReady: true, moduleDetail: detail });
     log("Foundry module ready", detail);
   });
