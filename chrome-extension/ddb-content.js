@@ -14,7 +14,7 @@
   const MAX_CARD_TEXT = 1400;
   // Suppress duplicate representations of the same completed roll across rerendered DOM nodes.
   // A short window still permits a later legitimate roll with the same result.
-  const DUPLICATE_SIGNATURE_WINDOW_MS = 1800;
+  const DUPLICATE_SIGNATURE_WINDOW_MS = 500;
 
   function log(...args) {
     console.debug(`[${BRIDGE_NAME}]`, ...args);
@@ -438,8 +438,26 @@
     }
   });
 
+  function markExistingRollsAsSeen() {
+    // Establish a baseline before accepting new mutations. DDB's game log may
+    // already contain dozens of completed rolls when this content script starts.
+    // Mark those roots as processed without forwarding them to Foundry.
+    const selectors = "[class*='game-log' i], [class*='log-entry' i], [class*='dice' i], [class*='roll' i], [data-roll-total], [data-roll], li, article";
+    const roots = new Set();
+    document.body.querySelectorAll(selectors).forEach(el => {
+      if (!(el instanceof HTMLElement)) return;
+      const text = textOf(el);
+      if (text.length > MAX_CARD_TEXT || !looksLikeRoll(el, text)) return;
+      const root = findRollRoot(el);
+      if (root) roots.add(root);
+    });
+    for (const root of roots) processedElements.add(root);
+    log("Ignored existing game-log entries at startup", roots.size);
+  }
+
   function start() {
     if (extensionContextInvalid || !document.body) return;
+    markExistingRollsAsSeen();
     observer.observe(document.body, {
       childList: true,
       subtree: true,
