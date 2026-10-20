@@ -72,8 +72,10 @@ function isSupportedFoundryUrl(url) {
 
 function isCrossTabDuplicate(roll) {
   const now = Date.now();
-  for (const [signature, entry] of recentRollSignatures) {
-    if (now - entry.timestamp > CROSS_TAB_DUPLICATE_WINDOW_MS) recentRollSignatures.delete(signature);
+  for (const [signature, entries] of recentRollSignatures) {
+    const active = entries.filter(entry => now - entry.timestamp <= CROSS_TAB_DUPLICATE_WINDOW_MS);
+    if (active.length) recentRollSignatures.set(signature, active);
+    else recentRollSignatures.delete(signature);
   }
 
   const signature = getCrossTabRollSignature(roll);
