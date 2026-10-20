@@ -11,7 +11,7 @@
   const MAX_CARD_TEXT = 1400;
   // Suppress duplicate representations of the same completed roll across rerendered DOM nodes.
   // A short window still permits a later legitimate roll with the same result.
-  const DUPLICATE_SIGNATURE_WINDOW_MS = 1800;
+  const DUPLICATE_SIGNATURE_WINDOW_MS = 300;
 
   function log(...args) {
     console.debug(`[${BRIDGE_NAME}]`, ...args);
@@ -286,7 +286,7 @@
     const canonicalTitle = cleanText(roll.title).toLowerCase().replace(/[^a-z0-9]+/g, "");
     const signature = hashText([
       canonicalTitle,
-      cleanText(roll.formula).toLowerCase().replace(/\\s+/g, ""),
+      cleanText(roll.formula).toLowerCase().replace(/\s+/g, ""),
       String(roll.total)
     ].join("|"));
     const now = Date.now();
@@ -295,8 +295,7 @@
     }
     const priorAt = recentSignatures.get(signature);
     if (priorAt && now - priorAt <= DUPLICATE_SIGNATURE_WINDOW_MS) {
-      log("Suppressed duplicate roll representation", { signature, title: roll.title, total: roll.total });
-      seen.add(roll.id);
+      log("Suppressed near-simultaneous duplicate representation", { signature, title: roll.title, total: roll.total });
       return;
     }
     recentSignatures.set(signature, now);
