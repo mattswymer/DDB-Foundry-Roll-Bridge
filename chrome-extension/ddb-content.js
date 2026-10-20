@@ -279,10 +279,14 @@
     // D&D Beyond can represent one result with multiple nested elements and can
     // recreate those elements during rerenders. Element-based IDs alone do not
     // deduplicate those copies, so also compare meaningful content over a short window.
+    // D&D Beyond sometimes exposes the same roll through two card shapes:
+    // one includes the character/action name in the "character" field and one
+    // does not. Compare a punctuation-insensitive title plus formula and total,
+    // rather than requiring the extracted character/title split to match.
+    const canonicalTitle = cleanText(roll.title).toLowerCase().replace(/[^a-z0-9]+/g, "");
     const signature = hashText([
-      cleanText(roll.character).toLowerCase(),
-      cleanText(roll.title).toLowerCase(),
-      cleanText(roll.formula).toLowerCase(),
+      canonicalTitle,
+      cleanText(roll.formula).toLowerCase().replace(/\\s+/g, ""),
       String(roll.total)
     ].join("|"));
     const now = Date.now();
