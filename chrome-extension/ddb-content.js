@@ -321,15 +321,12 @@
     // DDB sometimes exposes one result as "Scorching Ray: damage" and elsewhere
     // as "SCORCHING RAY: DAMAGE 4 + 6". Normalize to the action category rather
     // than the rendered title, which can include the dice breakdown.
-    const action = /\b(damage|to hit|attack)\b/.test(canonicalText)
-      ? ( /\b(damage)\b/.test(canonicalText) ? "damage" : "attack" )
-      : /\b(save|saving throw)\b/.test(canonicalText) ? "save"
-      : /\b(check|ability check)\b/.test(canonicalText) ? "check"
-      : canonicalText.replace(/\b\d+\b/g, "").replace(/[^a-z]+/g, "");
-    const character = cleanText(roll.character).toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const canonicalTitle = canonicalText
+      .replace(/\b\d*d\d+\b/gi, "")
+      .replace(/[+-]?\s*\d+(?:\.\d+)?/g, "")
+      .replace(/[^a-z]+/g, "");
     const signature = hashText([
-      character,
-      action,
+      canonicalTitle,
       cleanText(roll.formula).toLowerCase().replace(/\s+/g, ""),
       String(roll.total)
     ].join("|"));
