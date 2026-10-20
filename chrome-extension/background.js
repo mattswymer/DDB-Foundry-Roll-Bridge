@@ -32,6 +32,35 @@ const STATE = {
 
 const MAX_RECENT = 50;
 const MAX_SEEN = 200;
+// Multiple open D&D Beyond character tabs can independently observe the same
+// shared game-log roll. Deduplicate at the background level, across all tabs.
+const CROSS_TAB_DUPLICATE_WINDOW_MS = 3500;
+const recentRollSignatures = new Map();
+
+function normalizeRollPart(value) {
+  return String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function getCrossTabRollSignature(roll) {
+  return [
+    normalizeRollPart(roll.title),
+    normalizeRollPart(roll.formula),
+    String(roll.total ?? "")
+  ].join("|");
+}
+
+function isCrossTabDuplicate(roll) {
+  const now = Date.now();
+  for (const [signature, timestamp] of recentRollSignatures) {
+    if (now - timestamp > CROSS_TAB_DUPLICATE_WINDOW_MS) recentRollSignatures.delete(signature);
+  }
+
+  const signature = getCrossTabRollSignature(roll);
+  const previousAt = recentRollSignatures.get(signature);
+  if (previousAt && now - previousAt <= CROSS_TAB_DUPLICATE_WINDOW_MS) return true;
+  recentRollSignatures.set(signature, now);
+  return false;
+}
 
 function rememberRoll(roll) {
   if (!roll || !roll.id) return false;
@@ -100,7 +129,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       receivedAt: Date.now(),
       sourceTabId: sender?.tab?.id ?? null
     };
-    const isNew = rememberRoll(roll);
+    // First deduplicate identical roll representations emitted by separate DDB
+    // tabs, then apply the existing ID-based guard as a second layer.
+    const duplicateAcrossTabs = isCrossTabDuplicate(roll);
+    const isNew = duplicateAcrossTabs ? false : rememberRoll(roll);
+    if (duplicateAcrossTabs) {
+      STATE.counters.crossTabDuplicates = (STATE.counters.crossTabDuplicates || 0) + 1;
+      STATE.ddb.lastAccepted = false;
+    }
     if (isNew) broadcastRoll(roll);
     sendResponse({ ok: true, accepted: isNew });
     return true;
