@@ -2,6 +2,7 @@
   const BRIDGE_NAME = "DDB → Foundry Roll Bridge";
   let isFoundry = false;
   let moduleReady = false;
+  let isGM = false;
   let extensionContextInvalid = false;
   let statusInterval = null;
   const pendingRolls = [];
@@ -55,6 +56,7 @@
       status: {
         foundryDetected: isFoundry,
         moduleReady,
+        isGM,
         url: location.href,
         title: document.title,
         updatedAt: Date.now(),
@@ -87,6 +89,22 @@
   function flushPendingRolls() {
     if (!isFoundry || !moduleReady || !pendingRolls.length) return;
     const queued = pendingRolls.splice(0, pendingRolls.length);
+
+    if (!isGM) {
+      for (const roll of queued) {
+        document.dispatchEvent(new CustomEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
+          detail: JSON.stringify({
+            ok: false,
+            reason: "not-gm",
+            id: roll.id,
+            at: Date.now()
+          })
+        }));
+      }
+      log("Discarded queued rolls because this Foundry session is not GM", queued.length);
+      return;
+    }
+
     for (const roll of queued) dispatchRollToFoundry(roll);
     log("Flushed queued rolls after Foundry module became ready", queued.length);
   }
@@ -94,6 +112,7 @@
   function forwardToFoundryPage(roll) {
     isFoundry = looksLikeFoundry();
     if (!isFoundry || !roll?.id) return false;
+    if (moduleReady && !isGM) return false;
 
     if (!moduleReady) {
       if (pendingRolls.some(pending => pending.id === roll.id)) return true;
@@ -117,6 +136,7 @@
     moduleReady = true;
     let detail = {};
     try { detail = JSON.parse(event.detail || "{}"); } catch (_) {}
+    isGM = detail.isGM === true;
     flushPendingRolls();
     sendStatus({ moduleReady: true, moduleDetail: detail });
     log("Foundry module ready", detail);
@@ -132,7 +152,7 @@
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message?.type === "DDB_ROLL_BRIDGE_ROLL") {
       const forwarded = forwardToFoundryPage(message.roll);
-      sendResponse({ ok: forwarded, foundryDetected: isFoundry, moduleReady });
+      sendResponse({ ok: forwarded, foundryDetected: isFoundry, moduleReady, isGM });
       return true;
     }
 
