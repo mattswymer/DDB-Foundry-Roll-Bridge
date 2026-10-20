@@ -69,11 +69,11 @@ function isSupportedFoundryUrl(url) {
   try {
     const parsed = new URL(url);
     const host = parsed.hostname.toLowerCase();
+    const localHost = host === "localhost" || host === "127.0.0.1";
+    const forgeHost = host === "forge-vtt.com" || host.endsWith(".forge-vtt.com");
     return (
-      (parsed.protocol === "https:" &&
-        (host === "forge-vtt.com" || host.endsWith(".forge-vtt.com"))) ||
-      (parsed.protocol === "http:" &&
-        (host === "localhost" || host === "127.0.0.1"))
+      (parsed.protocol === "https:" && forgeHost) ||
+      ((parsed.protocol === "http:" || parsed.protocol === "https:") && localHost)
     );
   } catch (_) {
     return false;
