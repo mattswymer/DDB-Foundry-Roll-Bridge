@@ -2,6 +2,37 @@
   const BRIDGE_NAME = "DDB → Foundry Roll Bridge";
   let isFoundry = false;
   let moduleReady = false;
+  let extensionContextInvalid = false;
+  let statusInterval = null;
+
+  // Chrome invalidates existing content scripts when the extension is reloaded
+  // or replaced. A stale script must stop messaging rather than throw every
+  // time its status timer or an acknowledgement fires.
+  function sendRuntimeMessage(message) {
+    if (extensionContextInvalid) return false;
+    try {
+      if (!chrome?.runtime?.id) {
+        extensionContextInvalid = true;
+        if (statusInterval !== null) clearInterval(statusInterval);
+        return false;
+      }
+      chrome.runtime.sendMessage(message, () => {
+        try {
+          // Reading lastError inside the callback suppresses Chrome's
+          // unchecked runtime.lastError warning when a receiver is absent.
+          void chrome.runtime.lastError;
+        } catch (_) {
+          extensionContextInvalid = true;
+          if (statusInterval !== null) clearInterval(statusInterval);
+        }
+      });
+      return true;
+    } catch (_) {
+      extensionContextInvalid = true;
+      if (statusInterval !== null) clearInterval(statusInterval);
+      return false;
+    }
+  }
 
   function looksLikeFoundry() {
     return !!(
@@ -17,7 +48,7 @@
   }
 
   function sendStatus(extra = {}) {
-    chrome.runtime.sendMessage({
+    sendRuntimeMessage({
       type: "DDB_ROLL_BRIDGE_FOUNDRY_STATUS",
       status: {
         foundryDetected: isFoundry,
@@ -27,7 +58,7 @@
         updatedAt: Date.now(),
         ...extra
       }
-    }, () => void chrome.runtime.lastError);
+    });
   }
 
   function pingFoundryModule() {
@@ -61,7 +92,7 @@
   document.addEventListener("DDB_DIRECT_ROLL_BRIDGE_ACK", event => {
     let ack = {};
     try { ack = JSON.parse(event.detail || "{}"); } catch (_) {}
-    chrome.runtime.sendMessage({ type: "DDB_ROLL_BRIDGE_FOUNDRY_ACK", ack }, () => void chrome.runtime.lastError);
+    sendRuntimeMessage({ type: "DDB_ROLL_BRIDGE_FOUNDRY_ACK", ack });
     log("Foundry ack", ack);
   });
 
@@ -84,7 +115,12 @@
     if (!isFoundry) return;
     sendStatus();
     pingFoundryModule();
-    setInterval(() => {
+    statusInterval = setInterval(() => {
+      if (extensionContextInvalid) {
+        clearInterval(statusInterval);
+        statusInterval = null;
+        return;
+      }
       isFoundry = looksLikeFoundry();
       sendStatus();
       pingFoundryModule();
