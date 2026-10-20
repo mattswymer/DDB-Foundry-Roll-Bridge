@@ -1,12 +1,12 @@
-/* Foundry's chat panel can be dark-themed. Use explicit readable foreground
-   colors and translucent light surfaces instead of theme-dependent dark tokens. */
+/* Match Foundry's default chat-card text treatment: inherit the system's
+   foreground color, keep content surfaces transparent, and avoid custom pills. */
 .ddb-direct-roll-card {
-  color: #f3f3f3 !important;
+  color: var(--color-text-dark-primary, #191813);
   font-family: var(--font-primary, "Signika", sans-serif);
   font-size: var(--font-size-14, 14px);
   line-height: 1.35;
   padding: 2px 0;
-  background: transparent !important;
+  background: transparent;
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -18,12 +18,12 @@
   justify-content: space-between;
   gap: 8px;
   padding: 0 0 6px;
-  border-bottom: 1px solid rgba(255,255,255,.24);
+  border-bottom: 1px solid var(--color-border-light-tertiary, #c9c7b8);
 }
 
 .ddb-direct-roll-character {
   margin: 0 0 2px;
-  color: #d0d8e5 !important;
+  color: var(--color-text-dark-secondary, #5b594f);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .035em;
@@ -31,7 +31,7 @@
 }
 
 .ddb-direct-roll-title {
-  color: #ffffff !important;
+  color: var(--color-text-dark-primary, #191813);
   font-size: 14px;
   font-weight: 700;
 }
@@ -40,10 +40,10 @@
   flex: 0 0 auto;
   min-width: 30px;
   padding: 2px 7px;
-  border: 1px solid rgba(255,255,255,.35);
+  border: 1px solid var(--color-border-light-tertiary, #c9c7b8);
   border-radius: 4px;
-  background: rgba(255,255,255,.13) !important;
-  color: #ffffff !important;
+  background: transparent;
+  color: var(--color-text-dark-primary, #191813);
   font-size: 18px;
   font-weight: 800;
   line-height: 1.25;
@@ -53,18 +53,18 @@
 .ddb-direct-roll-formula,
 .ddb-direct-roll-dice {
   margin-top: 6px;
-  padding: 4px 6px;
-  border: 1px solid rgba(255,255,255,.14);
-  border-radius: 3px;
-  background: rgba(255,255,255,.09) !important;
-  color: #f3f3f3 !important;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-dark-primary, #191813);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
 
 .ddb-direct-roll-formula strong,
 .ddb-direct-roll-dice strong {
-  color: #ffffff !important;
+  color: var(--color-text-dark-primary, #191813);
 }
 
 .ddb-direct-roll-formula {
@@ -73,18 +73,18 @@
 
 .ddb-direct-roll-raw {
   margin-top: 6px;
-  color: #e1e7f0 !important;
+  color: var(--color-text-dark-secondary, #5b594f);
   font-size: 12px;
 }
 
 .ddb-direct-roll-raw summary {
   cursor: pointer;
-  color: #d0dff5 !important;
+  color: var(--color-text-dark-secondary, #5b594f);
 }
 
 .ddb-direct-roll-raw div {
   margin-top: 5px;
-  color: #f3f3f3 !important;
+  color: var(--color-text-dark-primary, #191813);
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
