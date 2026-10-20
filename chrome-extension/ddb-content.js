@@ -1,6 +1,7 @@
 (() => {
   const BRIDGE_NAME = "DDB → Foundry Roll Bridge";
   const seen = new Set();
+  const recentSignatures = new Map();
   const processedElements = new WeakSet();
   const pendingRoots = new Map();
   const MAX_SEEN = 300;
@@ -8,6 +9,9 @@
   const PENDING_RECHECK_MS = 900;
   const MAX_PENDING_AGE_MS = 15000;
   const MAX_CARD_TEXT = 1400;
+  // Suppress duplicate representations of the same completed roll across rerendered DOM nodes.
+  // A short window still permits a later legitimate roll with the same result.
+  const DUPLICATE_SIGNATURE_WINDOW_MS = 1800;
 
   function log(...args) {
     console.debug(`[${BRIDGE_NAME}]`, ...args);
@@ -130,24 +134,25 @@
       "[data-roll-total]",
       "[class*='total' i]",
       "[class*='result' i]",
-      "[class*='dice-result' i]",
-      "[class*='number' i]"
+      "[class*='dice-result' i]"
     ];
     for (const sel of selectors) {
       for (const found of el.querySelectorAll(sel)) {
         const attr = found?.getAttribute("data-roll-total");
-        const num = maybeNumber(attr || found?.textContent);
+        const value = cleanText(attr || found?.textContent);
+        // Only accept a result field that contains a number by itself.
+        // Pulling the first number from arbitrary text caused fragments like
+        // "Strength = 1" or a weapon name to be misidentified as roll totals.
+        if (!/^[-+]?\d{1,3}$/.test(value)) continue;
+        const num = Number(value);
         if (Number.isFinite(num)) return num;
       }
     }
 
-    // Prefer a number after labels like Total/Result if present.
-    const labelled = cleanText(text).match(/(?:total|result)\D{0,12}([-+]?\d+)/i);
+    // Fallback only when the text explicitly labels the value as a total/result.
+    const labelled = cleanText(text).match(/\b(?:total|result)\s*[:=]?\s*([-+]?\d{1,3})\b/i);
     if (labelled) return Number(labelled[1]);
-
-    const nums = cleanText(text).match(/[-+]?\d+/g) || [];
-    if (!nums.length) return null;
-    return Number(nums[nums.length - 1]);
+    return null;
   }
 
   function extractFormula(text) {
@@ -243,8 +248,8 @@
     const formula = extractFormula(rawText);
     const total = extractTotal(el, rawText);
 
-    // Avoid sending tiny partial dice fragments. A complete roll needs at least a total or a formula.
-    if (total === null && !formula) return null;
+    // A formula alone is not proof of a completed roll. Require a credible total.
+    if (total === null) return null;
 
     const character = extractLikelyName(el, rawText);
     const title = extractTitle(el, rawText);
@@ -270,6 +275,28 @@
 
   function submitRoll(roll) {
     if (!roll?.id || seen.has(roll.id)) return;
+
+    // D&D Beyond can represent one result with multiple nested elements and can
+    // recreate those elements during rerenders. Element-based IDs alone do not
+    // deduplicate those copies, so also compare meaningful content over a short window.
+    const signature = hashText([
+      cleanText(roll.character).toLowerCase(),
+      cleanText(roll.title).toLowerCase(),
+      cleanText(roll.formula).toLowerCase(),
+      String(roll.total)
+    ].join("|"));
+    const now = Date.now();
+    for (const [key, timestamp] of recentSignatures) {
+      if (now - timestamp > DUPLICATE_SIGNATURE_WINDOW_MS) recentSignatures.delete(key);
+    }
+    const priorAt = recentSignatures.get(signature);
+    if (priorAt && now - priorAt <= DUPLICATE_SIGNATURE_WINDOW_MS) {
+      log("Suppressed duplicate roll representation", { signature, title: roll.title, total: roll.total });
+      seen.add(roll.id);
+      return;
+    }
+    recentSignatures.set(signature, now);
+
     seen.add(roll.id);
     if (seen.size > MAX_SEEN) {
       const ids = Array.from(seen);
