@@ -7,32 +7,50 @@
   let statusInterval = null;
   const pendingRolls = [];
   const MAX_PENDING_ROLLS = 100;
+  const MAX_PENDING_ROLL_AGE_MS = 60_000;
 
   // Chrome invalidates existing content scripts when the extension is reloaded
   // or replaced. A stale script must stop messaging rather than throw every
   // time its status timer or an acknowledgement fires.
-  function sendRuntimeMessage(message) {
+  function invalidateContext() {
+    if (extensionContextInvalid) return;
+    extensionContextInvalid = true;
+    if (statusInterval !== null) {
+      clearInterval(statusInterval);
+      statusInterval = null;
+    }
+    pendingRolls.length = 0;
+  }
+
+  function isContextAvailable() {
     if (extensionContextInvalid) return false;
     try {
       if (!chrome?.runtime?.id) {
-        extensionContextInvalid = true;
-        if (statusInterval !== null) clearInterval(statusInterval);
+        invalidateContext();
         return false;
       }
+      return true;
+    } catch (_) {
+      invalidateContext();
+      return false;
+    }
+  }
+
+  function sendRuntimeMessage(message) {
+    if (!isContextAvailable()) return false;
+    try {
       chrome.runtime.sendMessage(message, () => {
         try {
           // Reading lastError inside the callback suppresses Chrome's
           // unchecked runtime.lastError warning when a receiver is absent.
           void chrome.runtime.lastError;
         } catch (_) {
-          extensionContextInvalid = true;
-          if (statusInterval !== null) clearInterval(statusInterval);
+          invalidateContext();
         }
       });
       return true;
     } catch (_) {
-      extensionContextInvalid = true;
-      if (statusInterval !== null) clearInterval(statusInterval);
+      invalidateContext();
       return false;
     }
   }
@@ -66,7 +84,7 @@
   }
 
   function pingFoundryModule() {
-    if (!isFoundry) return;
+    if (!isContextAvailable() || !isFoundry) return;
     document.dispatchEvent(new CustomEvent("DDB_DIRECT_ROLL_BRIDGE_PING", {
       detail: JSON.stringify({ source: "extension", at: Date.now() })
     }));
@@ -86,41 +104,49 @@
     });
   }
 
-  function flushPendingRolls() {
-    if (!isFoundry || !moduleReady || !pendingRolls.length) return;
-    const queued = pendingRolls.splice(0, pendingRolls.length);
+  function emitRejectedRollAck(roll, reason) {
+    document.dispatchEvent(new CustomEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
+      detail: JSON.stringify({ ok: false, reason, id: roll?.id || null, at: Date.now() })
+    }));
+  }
 
-    if (!isGM) {
-      for (const roll of queued) {
-        document.dispatchEvent(new CustomEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
-          detail: JSON.stringify({
-            ok: false,
-            reason: "not-gm",
-            id: roll.id,
-            at: Date.now()
-          })
-        }));
-      }
-      log("Discarded queued rolls because this Foundry session is not GM", queued.length);
-      return;
+  function flushPendingRolls() {
+    if (!isContextAvailable() || !isFoundry || !moduleReady || !pendingRolls.length) return;
+    const queued = pendingRolls.splice(0, pendingRolls.length);
+    const now = Date.now();
+
+    for (const entry of queued) {
+      const reason = now - entry.queuedAt > MAX_PENDING_ROLL_AGE_MS
+        ? "startup-timeout"
+        : !isGM ? "not-gm" : null;
+
+      if (reason) emitRejectedRollAck(entry.roll, reason);
+      else dispatchRollToFoundry(entry.roll);
     }
 
-    for (const roll of queued) dispatchRollToFoundry(roll);
-    log("Flushed queued rolls after Foundry module became ready", queued.length);
+    log("Resolved queued rolls after Foundry module became ready", queued.length);
   }
 
   function forwardToFoundryPage(roll) {
+    if (!isContextAvailable()) return false;
     isFoundry = looksLikeFoundry();
     if (!isFoundry || !roll?.id) return false;
     if (moduleReady && !isGM) return false;
 
     if (!moduleReady) {
-      if (pendingRolls.some(pending => pending.id === roll.id)) return true;
+      const now = Date.now();
+      for (let i = pendingRolls.length - 1; i >= 0; i--) {
+        if (now - pendingRolls[i].queuedAt > MAX_PENDING_ROLL_AGE_MS) {
+          const [expired] = pendingRolls.splice(i, 1);
+          emitRejectedRollAck(expired.roll, "startup-timeout");
+        }
+      }
+      if (pendingRolls.some(pending => pending.roll.id === roll.id)) return true;
       if (pendingRolls.length >= MAX_PENDING_ROLLS) {
         log("Rejected roll because the Foundry startup queue is full", roll.id);
         return false;
       }
-      pendingRolls.push(roll);
+      pendingRolls.push({ roll, queuedAt: now });
       sendStatus({
         lastQueuedRollId: roll.id,
         pendingRollCount: pendingRolls.length
@@ -133,6 +159,7 @@
   }
 
   document.addEventListener("DDB_DIRECT_ROLL_BRIDGE_MODULE_READY", event => {
+    if (!isContextAvailable()) return;
     moduleReady = true;
     let detail = {};
     try { detail = JSON.parse(event.detail || "{}"); } catch (_) {}
@@ -143,6 +170,7 @@
   });
 
   document.addEventListener("DDB_DIRECT_ROLL_BRIDGE_ACK", event => {
+    if (!isContextAvailable()) return;
     let ack = {};
     try { ack = JSON.parse(event.detail || "{}"); } catch (_) {}
     sendRuntimeMessage({ type: "DDB_ROLL_BRIDGE_FOUNDRY_ACK", ack });
@@ -150,6 +178,10 @@
   });
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (!isContextAvailable()) {
+      sendResponse({ ok: false, reason: "extension-context-invalid" });
+      return true;
+    }
     if (message?.type === "DDB_ROLL_BRIDGE_ROLL") {
       const forwarded = forwardToFoundryPage(message.roll);
       sendResponse({ ok: forwarded, foundryDetected: isFoundry, moduleReady, isGM });
@@ -164,16 +196,13 @@
   });
 
   function start() {
+    if (!isContextAvailable()) return;
     isFoundry = looksLikeFoundry();
     if (!isFoundry) return;
     sendStatus();
     pingFoundryModule();
     statusInterval = setInterval(() => {
-      if (extensionContextInvalid) {
-        clearInterval(statusInterval);
-        statusInterval = null;
-        return;
-      }
+      if (!isContextAvailable()) return;
       isFoundry = looksLikeFoundry();
       sendStatus();
       pingFoundryModule();
