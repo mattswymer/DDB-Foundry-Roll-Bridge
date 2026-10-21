@@ -1,7 +1,7 @@
 {
   "id": "ddb-direct-roll-bridge",
   "title": "DDB Direct Roll Bridge",
-  "description": "Receives D&D Beyond rolls from the companion Chrome extension and mirrors them into Foundry chat.",
+  "description": "Mirrors completed D&D Beyond game-log rolls into readable Foundry VTT chat cards using a lightweight browser extension.",
   "version": "1.0.1",
   "compatibility": {
     "minimum": "11",
@@ -9,9 +9,16 @@
   },
   "authors": [
     {
-      "name": "Matt Swymer"
+      "name": "Matt Swymer",
+      "url": "https://github.com/mattswymer"
     }
   ],
+  "url": "https://github.com/mattswymer/DDB-Foundry-Roll-Bridge",
+  "manifest": "https://raw.githubusercontent.com/mattswymer/DDB-Foundry-Roll-Bridge/main/foundry-module/ddb-direct-roll-bridge/module.json",
+  "readme": "https://raw.githubusercontent.com/mattswymer/DDB-Foundry-Roll-Bridge/main/README.md",
+  "bugs": "https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/issues",
+  "changelog": "https://raw.githubusercontent.com/mattswymer/DDB-Foundry-Roll-Bridge/main/CHANGELOG.md",
+  "license": "LICENSE",
   "scripts": [
     "scripts/receiver.js"
   ],
