@@ -35,12 +35,20 @@ The extension reads D&D Beyond's rendered game-log interface. A D&D Beyond UI ch
 
 ### 1. Install the Foundry module
 
+**Recommended — install by manifest URL:** In Foundry, go to **Add-on Modules → Install Module**, paste the following into the **Manifest URL** field, and select **Install**:
+
+```
+https://raw.githubusercontent.com/mattswymer/DDB-Foundry-Roll-Bridge/main/foundry-module/ddb-direct-roll-bridge/module.json
+```
+
+Alternatively, install manually:
+
 1. Download or clone this repository.
 2. Copy the `foundry-module/ddb-direct-roll-bridge` folder into your Foundry user data directory's `Data/modules/` folder.
 3. Start Foundry and enable **DDB Direct Roll Bridge** in the world's **Manage Modules** settings.
 4. Launch the world as the GM.
 
-For The Forge, use its module/file management workflow to install the module in your world.
+For The Forge, use its module installation workflow and the manifest URL above.
 
 ### 2. Install the browser extension
 
