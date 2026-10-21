@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "DDB → Foundry Roll Bridge",
   "description": "Reads completed D&D Beyond game-log rolls and mirrors them into Foundry chat.",
-  "version": "0.1.5",
+  "version": "1.0.0",
   "host_permissions": [
     "https://www.dndbeyond.com/*",
     "https://dndbeyond.com/*",
