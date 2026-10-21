@@ -1,0 +1,297 @@
+--- old-ddb-content.js	2026-10-21 12:02:59.452109775 +0000
++++ new-ddb-content.js	2026-10-21 12:05:24.906209285 +0000
+@@ -1,32 +1,53 @@
+ (() => {
+   const BRIDGE_NAME = "DDB → Foundry Roll Bridge";
+   const seen = new Set();
+-  const recentSignatures = new Map();
+   const processedElements = new WeakSet();
+-  const pendingRoots = new Map();
++  // One entry per roll card still being tracked (pending, or settling after it resolved).
++  // Every card has its own state and its own timer; nothing is shared between cards.
++  const cards = new Map();
++  const dirtyRoots = new Set();
++  let flushScheduled = false;
++  let sweepInterval = null;
+   const MAX_SEEN = 300;
+   let extensionContextInvalid = false;
+   let statusInterval = null;
+   let observer = null;
+-  const PROCESS_DELAY_MS = 300;
+-  const PENDING_RECHECK_MS = 250;
++  // A resolved card must keep the same parsed result for this long before it is sent.
++  // This is a per-card stability check (it only protects half-rendered cards), not a
++  // global delay. It is skipped while the tab is hidden, where timers get throttled.
++  const SETTLE_MS = 60;
++  const SWEEP_MS = 250;
+   const MAX_PENDING_AGE_MS = 15000;
+   const MAX_CARD_TEXT = 1400;
+-  // Suppress duplicate representations of the same completed roll across rerendered DOM nodes.
+-  // A short window still permits a later legitimate roll with the same result.
+-  const DUPLICATE_SIGNATURE_WINDOW_MS = 500;
++  // D&D Beyond can show one roll in two places at once (for example a popup and the
++  // log entry). Each submitted roll grants ONE "twin credit" that absorbs a single
++  // matching copy within this window, but only if that copy sits in a different place
++  // on the page (a different parent element), is nested with the original, or replaced
++  // an original that has since disappeared. Two matching cards side by side in the same
++  // list are two real rolls, never twins.
++  const TWIN_WINDOW_MS = 500;
++  const twinCredits = new Map();
++  let DEBUG = false;
++  try { DEBUG = localStorage.getItem("ddbBridgeDebug") === "1"; } catch (_) {}
+ 
+   function log(...args) {
+     console.debug(`[${BRIDGE_NAME}]`, ...args);
+   }
+ 
++  // Run localStorage.setItem("ddbBridgeDebug", "1") on the D&D Beyond page and reload to see these.
++  function debug(...args) {
++    if (DEBUG) console.log(`[${BRIDGE_NAME}] debug:`, ...args);
++  }
++
+   function stopBridge() {
+     if (extensionContextInvalid) return;
+     extensionContextInvalid = true;
+     try { observer?.disconnect(); } catch (_) {}
+     if (statusInterval !== null) clearInterval(statusInterval);
+-    for (const pending of pendingRoots.values()) clearTimeout(pending.timer);
+-    pendingRoots.clear();
++    if (sweepInterval !== null) clearInterval(sweepInterval);
++    for (const card of cards.values()) clearTimeout(card.timer);
++    cards.clear();
++    dirtyRoots.clear();
+   }
+ 
+   function sendRuntimeMessage(message, callback) {
+@@ -307,39 +328,61 @@
+     };
+   }
+ 
+-  function submitRoll(roll) {
+-    if (extensionContextInvalid || !roll?.id || seen.has(roll.id)) return;
+-
+-    // D&D Beyond can represent one result with multiple nested elements and can
+-    // recreate those elements during rerenders. Element-based IDs alone do not
+-    // deduplicate those copies, so also compare meaningful content over a short window.
+-    // D&D Beyond sometimes exposes the same roll through two card shapes:
+-    // one includes the character/action name in the "character" field and one
+-    // does not. Compare a punctuation-insensitive title plus formula and total,
+-    // rather than requiring the extracted character/title split to match.
+-    const canonicalText = cleanText(roll.title).toLowerCase();
+-    // DDB sometimes exposes one result as "Scorching Ray: damage" and elsewhere
+-    // as "SCORCHING RAY: DAMAGE 4 + 6". Normalize to the action category rather
+-    // than the rendered title, which can include the dice breakdown.
+-    const canonicalTitle = canonicalText
++  function rollSignature(roll) {
++    // D&D Beyond sometimes renders one result as "Scorching Ray: damage" and elsewhere as
++    // "SCORCHING RAY: DAMAGE 4 + 6". Normalize to the action category rather than the
++    // rendered title, which can include the dice breakdown.
++    const canonicalTitle = cleanText(roll.title).toLowerCase()
+       .replace(/\b\d*d\d+\b/gi, "")
+       .replace(/[+-]?\s*\d+(?:\.\d+)?/g, "")
+       .replace(/[^a-z]+/g, "");
+-    const signature = hashText([
++    return hashText([
+       canonicalTitle,
+       cleanText(roll.formula).toLowerCase().replace(/\s+/g, ""),
+       String(roll.total)
+     ].join("|"));
+-    const now = Date.now();
+-    for (const [key, timestamp] of recentSignatures) {
+-      if (now - timestamp > DUPLICATE_SIGNATURE_WINDOW_MS) recentSignatures.delete(key);
++  }
++
++  function isTwinLocation(prior, current) {
++    return !prior.isConnected ||
++      prior.parentElement !== current.parentElement ||
++      prior.contains(current) ||
++      current.contains(prior);
++  }
++
++  function consumeTwinCredit(signature, root, now) {
++    const credits = (twinCredits.get(signature) || []).filter(c => now - c.at <= TWIN_WINDOW_MS);
++    const i = credits.findIndex(c => c.root !== root && isTwinLocation(c.root, root));
++    if (i === -1) {
++      if (credits.length) twinCredits.set(signature, credits); else twinCredits.delete(signature);
++      return false;
+     }
+-    const priorAt = recentSignatures.get(signature);
+-    if (priorAt && now - priorAt <= DUPLICATE_SIGNATURE_WINDOW_MS) {
+-      log("Suppressed near-simultaneous duplicate representation", { signature, title: roll.title, total: roll.total });
++    credits.splice(i, 1);
++    if (credits.length) twinCredits.set(signature, credits); else twinCredits.delete(signature);
++    return true;
++  }
++
++  function grantTwinCredit(signature, root, now) {
++    const credits = (twinCredits.get(signature) || []).filter(c => now - c.at <= TWIN_WINDOW_MS);
++    credits.push({ at: now, root });
++    twinCredits.set(signature, credits);
++    if (twinCredits.size > 100) {
++      for (const [key, list] of twinCredits) {
++        if (!list.some(c => now - c.at <= TWIN_WINDOW_MS)) twinCredits.delete(key);
++      }
++    }
++  }
++
++  function submitRoll(roll, root) {
++    if (extensionContextInvalid || !roll?.id || seen.has(roll.id)) return;
++
++    const signature = rollSignature(roll);
++    const now = Date.now();
++    if (consumeTwinCredit(signature, root, now)) {
++      debug("Absorbed twin copy of a roll that was already sent", { title: roll.title, total: roll.total });
+       return;
+     }
+-    recentSignatures.set(signature, now);
++    grantTwinCredit(signature, root, now);
+ 
+     seen.add(roll.id);
+     if (seen.size > MAX_SEEN) {
+@@ -359,54 +402,79 @@
+     });
+   }
+ 
+-  function queueRoot(root) {
+-    if (extensionContextInvalid || !(root instanceof HTMLElement)) return;
++  // Evaluate one card right now. Called when the card changes (mutation-driven), never on a
++  // global schedule. A pending card does nothing and costs nothing until it changes again.
++  function evaluateCard(root) {
++    if (extensionContextInvalid || processedElements.has(root)) return;
+     const key = getElementKey(root);
+-    const existing = pendingRoots.get(key);
++    const now = Date.now();
++    let card = cards.get(key);
++    if (!card) {
++      card = { root, firstSeenAt: now, sig: null, stableSince: 0, timer: null };
++      cards.set(key, card);
++    }
++    if (card.timer) { clearTimeout(card.timer); card.timer = null; }
++    if (!root.isConnected) { cards.delete(key); return; }
++
++    const roll = parseRollElement(root);
++    if (!roll || roll.pending) {
++      card.sig = null; // still waiting; the next change to this card re-evaluates it
++      return;
++    }
+ 
+-    // Mutations to the same roll card are frequent while DDB renders dice,
+-    // totals, and labels. Do not restart its timer on every mutation: doing so
+-    // can starve several rapid rolls until only the last card gets forwarded.
+-    // The scheduled check below retries explicitly if the roll is still pending.
+-    if (existing) return;
+-
+-    const firstSeenAt = Date.now();
+-    const timer = setTimeout(() => {
+-      if (processedElements.has(root)) {
+-        pendingRoots.delete(key);
+-        return;
+-      }
++    const sig = rollSignature(roll);
++    if (card.sig !== sig) { card.sig = sig; card.stableSince = now; }
++    const wait = (document.hidden ? 0 : SETTLE_MS) - (now - card.stableSince);
++    if (wait > 0) {
++      card.timer = setTimeout(() => evaluateCard(root), wait);
++      return;
++    }
+ 
+-      const roll = parseRollElement(root);
+-      if (!roll) {
+-        pendingRoots.delete(key);
+-        return;
+-      }
++    cards.delete(key);
++    processedElements.add(root);
++    submitRoll(roll, root);
++  }
+ 
+-      if (roll.pending) {
+-        // Wait for the animated/placeholder D&D Beyond roll card to resolve.
+-        // If it never resolves, drop it rather than posting a '?' result.
+-        if (Date.now() - firstSeenAt < MAX_PENDING_AGE_MS && document.contains(root)) {
+-          const retry = setTimeout(() => {
+-            // Release the current queue entry before rescheduling; otherwise
+-            // queueRoot sees the existing entry and returns without retrying.
+-            pendingRoots.delete(key);
+-            queueRoot(root);
+-          }, PENDING_RECHECK_MS);
+-          pendingRoots.set(key, { root, timer: retry, firstSeenAt });
+-        } else {
+-          pendingRoots.delete(key);
+-          log("Dropped unresolved pending roll", roll.rawText);
+-        }
+-        return;
+-      }
++  function flushDirty() {
++    flushScheduled = false;
++    const roots = Array.from(dirtyRoots);
++    dirtyRoots.clear();
++    for (const root of roots) evaluateCard(root);
++  }
++
++  // Mutations are coalesced in a microtask: all changes from one DOM update batch are
++  // evaluated together, immediately after the batch, with no timer involved.
++  function queueRoot(root) {
++    if (extensionContextInvalid || !(root instanceof HTMLElement)) return;
++    dirtyRoots.add(root);
++    if (!flushScheduled) {
++      flushScheduled = true;
++      queueMicrotask(flushDirty);
++    }
++  }
+ 
+-      pendingRoots.delete(key);
+-      processedElements.add(root);
+-      submitRoll(roll);
+-    }, PROCESS_DELAY_MS);
++  // Backstop only: expires cards that never resolved and re-checks waiting cards in case
++  // a change was missed. It is not on the path of normal rolls.
++  function sweepCards() {
++    const now = Date.now();
++    for (const [key, card] of Array.from(cards)) {
++      if (!card.root.isConnected || now - card.firstSeenAt > MAX_PENDING_AGE_MS) {
++        clearTimeout(card.timer);
++        cards.delete(key);
++        debug("Dropped unresolved or removed card", textOf(card.root).slice(0, 120));
++      } else if (card.sig === null) {
++        evaluateCard(card.root);
++      }
++    }
++  }
+ 
+-    pendingRoots.set(key, { root, timer, firstSeenAt });
++  // A change deep inside a card (for example only the small element that holds the total)
++  // does not look like a roll by itself, so map it back to any card we are already tracking.
++  function touchTrackedCards(target) {
++    if (!cards.size || !target) return;
++    for (const card of cards.values()) {
++      if (card.root === target || card.root.contains(target)) queueRoot(card.root);
++    }
+   }
+ 
+   function scanNode(node) {
+@@ -433,8 +501,16 @@
+   observer = new MutationObserver(mutations => {
+     if (extensionContextInvalid) return;
+     for (const mutation of mutations) {
++      touchTrackedCards(mutation.target);
+       for (const node of mutation.addedNodes) scanNode(node);
+ 
++      // A card can also change by swapping a text node (the result replacing a
++      // placeholder). Re-scan the small element that owns it.
++      if (mutation.type === "childList" && mutation.target instanceof HTMLElement &&
++          Array.from(mutation.addedNodes).some(n => n.nodeType === Node.TEXT_NODE)) {
++        scanNode(mutation.target);
++      }
++
+       // D&D Beyond often creates a roll card in a pending state and then updates
+       // text nodes inside the same element. Watch those changes too so we send
+       // only the final completed card.
+@@ -476,6 +552,7 @@
+       attributeFilter: ["class", "data-roll-total", "data-roll", "data-character-name", "aria-label"]
+     });
+     sendStatus();
++    sweepInterval = setInterval(sweepCards, SWEEP_MS);
+     statusInterval = setInterval(() => {
+       if (extensionContextInvalid) {
+         clearInterval(statusInterval);
