@@ -5,20 +5,59 @@
   const processedElements = new WeakSet();
   const pendingRoots = new Map();
   const MAX_SEEN = 300;
-  const PROCESS_DELAY_MS = 1400;
-  const PENDING_RECHECK_MS = 900;
+  let extensionContextInvalid = false;
+  let statusInterval = null;
+  let observer = null;
+  const PROCESS_DELAY_MS = 300;
+  const PENDING_RECHECK_MS = 250;
   const MAX_PENDING_AGE_MS = 15000;
   const MAX_CARD_TEXT = 1400;
   // Suppress duplicate representations of the same completed roll across rerendered DOM nodes.
   // A short window still permits a later legitimate roll with the same result.
-  const DUPLICATE_SIGNATURE_WINDOW_MS = 1800;
+  const DUPLICATE_SIGNATURE_WINDOW_MS = 500;
 
   function log(...args) {
     console.debug(`[${BRIDGE_NAME}]`, ...args);
   }
 
+  function stopBridge() {
+    if (extensionContextInvalid) return;
+    extensionContextInvalid = true;
+    try { observer?.disconnect(); } catch (_) {}
+    if (statusInterval !== null) clearInterval(statusInterval);
+    for (const pending of pendingRoots.values()) clearTimeout(pending.timer);
+    pendingRoots.clear();
+  }
+
+  function sendRuntimeMessage(message, callback) {
+    if (extensionContextInvalid) return false;
+    try {
+      if (!chrome?.runtime?.id) {
+        stopBridge();
+        return false;
+      }
+      chrome.runtime.sendMessage(message, response => {
+        try {
+          const error = chrome.runtime.lastError;
+          if (error && /extension context invalidated/i.test(error.message || "")) {
+            stopBridge();
+            return;
+          }
+        } catch (_) {
+          stopBridge();
+          return;
+        }
+        if (!extensionContextInvalid && typeof callback === "function") callback(response);
+      });
+      return true;
+    } catch (_) {
+      stopBridge();
+      return false;
+    }
+  }
+
   function sendStatus(extra = {}) {
-    chrome.runtime.sendMessage({
+    sendRuntimeMessage({
       type: "DDB_ROLL_BRIDGE_DDB_STATUS",
       status: {
         url: location.href,
@@ -26,7 +65,7 @@
         lastScanAt: Date.now(),
         ...extra
       }
-    }, () => void chrome.runtime.lastError);
+    });
   }
 
   function cleanText(value) {
@@ -43,11 +82,6 @@
       hash |= 0;
     }
     return Math.abs(hash).toString(36);
-  }
-
-  function maybeNumber(text) {
-    const match = String(text || "").match(/[-+]?\d+/);
-    return match ? Number(match[0]) : null;
   }
 
   function looksLikeRoll(el, text) {
@@ -274,15 +308,26 @@
   }
 
   function submitRoll(roll) {
-    if (!roll?.id || seen.has(roll.id)) return;
+    if (extensionContextInvalid || !roll?.id || seen.has(roll.id)) return;
 
     // D&D Beyond can represent one result with multiple nested elements and can
     // recreate those elements during rerenders. Element-based IDs alone do not
     // deduplicate those copies, so also compare meaningful content over a short window.
+    // D&D Beyond sometimes exposes the same roll through two card shapes:
+    // one includes the character/action name in the "character" field and one
+    // does not. Compare a punctuation-insensitive title plus formula and total,
+    // rather than requiring the extracted character/title split to match.
+    const canonicalText = cleanText(roll.title).toLowerCase();
+    // DDB sometimes exposes one result as "Scorching Ray: damage" and elsewhere
+    // as "SCORCHING RAY: DAMAGE 4 + 6". Normalize to the action category rather
+    // than the rendered title, which can include the dice breakdown.
+    const canonicalTitle = canonicalText
+      .replace(/\b\d*d\d+\b/gi, "")
+      .replace(/[+-]?\s*\d+(?:\.\d+)?/g, "")
+      .replace(/[^a-z]+/g, "");
     const signature = hashText([
-      cleanText(roll.character).toLowerCase(),
-      cleanText(roll.title).toLowerCase(),
-      cleanText(roll.formula).toLowerCase(),
+      canonicalTitle,
+      cleanText(roll.formula).toLowerCase().replace(/\s+/g, ""),
       String(roll.total)
     ].join("|"));
     const now = Date.now();
@@ -291,8 +336,7 @@
     }
     const priorAt = recentSignatures.get(signature);
     if (priorAt && now - priorAt <= DUPLICATE_SIGNATURE_WINDOW_MS) {
-      log("Suppressed duplicate roll representation", { signature, title: roll.title, total: roll.total });
-      seen.add(roll.id);
+      log("Suppressed near-simultaneous duplicate representation", { signature, title: roll.title, total: roll.total });
       return;
     }
     recentSignatures.set(signature, now);
@@ -303,20 +347,30 @@
       seen.clear();
       ids.slice(-MAX_SEEN).forEach(id => seen.add(id));
     }
-    chrome.runtime.sendMessage({ type: "DDB_ROLL_BRIDGE_FOUND_ROLL", roll }, response => {
-      if (chrome.runtime.lastError) return;
-      sendStatus({ lastRollId: roll.id, lastRollAt: Date.now(), accepted: !!response?.accepted });
-      if (response?.accepted) log("Forwarded grouped roll", roll);
+    sendRuntimeMessage({ type: "DDB_ROLL_BRIDGE_FOUND_ROLL", roll }, response => {
+      sendStatus({
+        lastRollId: roll.id,
+        lastRollAt: Date.now(),
+        accepted: !!response?.accepted,
+        routed: !!response?.routed
+      });
+      if (response?.routed) log("Routed completed roll", { title: roll.title, total: roll.total });
+      else if (response?.accepted) log("Roll accepted but no Foundry tab confirmed routing", { title: roll.title, total: roll.total });
     });
   }
 
   function queueRoot(root) {
-    if (!(root instanceof HTMLElement)) return;
+    if (extensionContextInvalid || !(root instanceof HTMLElement)) return;
     const key = getElementKey(root);
     const existing = pendingRoots.get(key);
-    clearTimeout(existing?.timer);
 
-    const firstSeenAt = existing?.firstSeenAt || Date.now();
+    // Mutations to the same roll card are frequent while DDB renders dice,
+    // totals, and labels. Do not restart its timer on every mutation: doing so
+    // can starve several rapid rolls until only the last card gets forwarded.
+    // The scheduled check below retries explicitly if the roll is still pending.
+    if (existing) return;
+
+    const firstSeenAt = Date.now();
     const timer = setTimeout(() => {
       if (processedElements.has(root)) {
         pendingRoots.delete(key);
@@ -333,7 +387,12 @@
         // Wait for the animated/placeholder D&D Beyond roll card to resolve.
         // If it never resolves, drop it rather than posting a '?' result.
         if (Date.now() - firstSeenAt < MAX_PENDING_AGE_MS && document.contains(root)) {
-          const retry = setTimeout(() => queueRoot(root), PENDING_RECHECK_MS);
+          const retry = setTimeout(() => {
+            // Release the current queue entry before rescheduling; otherwise
+            // queueRoot sees the existing entry and returns without retrying.
+            pendingRoots.delete(key);
+            queueRoot(root);
+          }, PENDING_RECHECK_MS);
           pendingRoots.set(key, { root, timer: retry, firstSeenAt });
         } else {
           pendingRoots.delete(key);
@@ -351,7 +410,7 @@
   }
 
   function scanNode(node) {
-    if (!(node instanceof HTMLElement)) return;
+    if (extensionContextInvalid || !(node instanceof HTMLElement)) return;
     const roots = new Map();
 
     const consider = el => {
@@ -371,7 +430,8 @@
     for (const root of roots.values()) queueRoot(root);
   }
 
-  const observer = new MutationObserver(mutations => {
+  observer = new MutationObserver(mutations => {
+    if (extensionContextInvalid) return;
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) scanNode(node);
 
@@ -388,10 +448,42 @@
     }
   });
 
+  function markExistingRollsAsSeen() {
+    // Establish a baseline before accepting new mutations. DDB's game log may
+    // already contain dozens of completed rolls when this content script starts.
+    // Mark those roots as processed without forwarding them to Foundry.
+    const selectors = "[class*='game-log' i], [class*='log-entry' i], [class*='dice' i], [class*='roll' i], [data-roll-total], [data-roll], li, article";
+    const roots = new Set();
+    document.body.querySelectorAll(selectors).forEach(el => {
+      if (!(el instanceof HTMLElement)) return;
+      const text = textOf(el);
+      if (text.length > MAX_CARD_TEXT || !looksLikeRoll(el, text)) return;
+      const root = findRollRoot(el);
+      if (root) roots.add(root);
+    });
+    for (const root of roots) processedElements.add(root);
+    log("Ignored existing game-log entries at startup", roots.size);
+  }
+
   function start() {
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
+    if (extensionContextInvalid || !document.body) return;
+    markExistingRollsAsSeen();
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["class", "data-roll-total", "data-roll", "data-character-name", "aria-label"]
+    });
     sendStatus();
-    setInterval(() => sendStatus(), 5000);
+    statusInterval = setInterval(() => {
+      if (extensionContextInvalid) {
+        clearInterval(statusInterval);
+        statusInterval = null;
+        return;
+      }
+      sendStatus();
+    }, 5000);
     log("Watching D&D Beyond page for completed grouped rolls");
     // Do not backfill the whole existing log on load; it can duplicate old messages.
   }

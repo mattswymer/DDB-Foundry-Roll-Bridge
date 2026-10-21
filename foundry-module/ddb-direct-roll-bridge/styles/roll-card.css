@@ -1,77 +1,90 @@
+/* Match Foundry's default chat-card text treatment: inherit the system's
+   foreground color, keep content surfaces transparent, and avoid custom pills. */
 .ddb-direct-roll-card {
-  border: 1px solid rgba(147, 197, 253, 0.35);
-  border-radius: 12px;
-  padding: 10px;
-  background: linear-gradient(145deg, rgba(15,23,42,.96), rgba(30,41,59,.96));
-  color: #e5e7eb;
-  box-shadow: 0 8px 18px rgba(0,0,0,.25);
+  color: var(--color-text-dark-primary, #191813);
+  font-family: var(--font-primary, "Signika", sans-serif);
+  font-size: var(--font-size-14, 14px);
+  line-height: 1.35;
+  padding: 2px 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .ddb-direct-roll-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+  padding: 0 0 6px;
+  border-bottom: 1px solid var(--color-border-light-tertiary, #c9c7b8);
 }
 
 .ddb-direct-roll-character {
-  font-size: 12px;
-  color: #93c5fd;
+  margin: 0 0 2px;
+  color: var(--color-text-dark-secondary, #5b594f);
+  font-size: 11px;
   font-weight: 700;
+  letter-spacing: .035em;
   text-transform: uppercase;
-  letter-spacing: .05em;
 }
 
 .ddb-direct-roll-title {
-  font-size: 15px;
-  font-weight: 800;
-  color: #fff;
+  color: var(--color-text-dark-primary, #191813);
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .ddb-direct-roll-total {
-  min-width: 46px;
-  min-height: 46px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  font-size: 22px;
-  font-weight: 900;
-  color: #fff;
-  background: rgba(59,130,246,.3);
-  border: 1px solid rgba(147,197,253,.5);
+  flex: 0 0 auto;
+  min-width: 30px;
+  padding: 2px 7px;
+  border: 1px solid var(--color-border-light-tertiary, #c9c7b8);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-dark-primary, #191813);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.ddb-direct-roll-formula,
+.ddb-direct-roll-dice {
+  margin-top: 6px;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-dark-primary, #191813);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.ddb-direct-roll-formula strong,
+.ddb-direct-roll-dice strong {
+  color: var(--color-text-dark-primary, #191813);
 }
 
 .ddb-direct-roll-formula {
-  margin-top: 8px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  background: rgba(255,255,255,.08);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  color: #bfdbfe;
+  font-family: var(--font-monospace, monospace);
 }
 
 .ddb-direct-roll-raw {
-  margin-top: 8px;
-  color: #cbd5e1;
+  margin-top: 6px;
+  color: var(--color-text-dark-secondary, #5b594f);
   font-size: 12px;
 }
 
 .ddb-direct-roll-raw summary {
   cursor: pointer;
-  color: #93c5fd;
+  color: var(--color-text-dark-secondary, #5b594f);
 }
 
 .ddb-direct-roll-raw div {
-  margin-top: 6px;
+  margin-top: 5px;
+  color: var(--color-text-dark-primary, #191813);
   line-height: 1.35;
-}
-
-
-.ddb-direct-roll-dice {
-  margin-top: 6px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  background: rgba(15,23,42,.65);
-  color: #e0f2fe;
-  font-size: 12px;
+  overflow-wrap: anywhere;
 }

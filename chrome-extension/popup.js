@@ -20,7 +20,13 @@ function update() {
       : "Open your D&D Beyond campaign page and open the game log panel.";
 
     setPill("foundryStatus", state.foundry.detected ? "detected" : "not seen", state.foundry.detected ? "ok" : "bad");
-    setPill("moduleStatus", state.foundry.moduleReady ? "ready" : "not ready", state.foundry.moduleReady ? "ok" : "warn");
+    const moduleIsReady = !!state.foundry.moduleReady;
+    const gmReady = moduleIsReady && state.foundry.isGM === true;
+    setPill(
+      "moduleStatus",
+      !moduleIsReady ? "not ready" : gmReady ? "ready (GM)" : "GM session needed",
+      !moduleIsReady ? "warn" : gmReady ? "ok" : "warn"
+    );
     document.getElementById("foundryUrl").textContent = state.foundry.detected
       ? `${state.foundry.title || "Foundry"}\nlast seen: ${fmtTime(state.foundry.lastSeenAt)}`
       : "Open Foundry in a tab and enable the DDB Direct Roll Bridge module.";

@@ -1,6 +1,6 @@
 (() => {
   const MODULE_ID = "ddb-direct-roll-bridge";
-  const MODULE_VERSION = "0.1.4";
+  const MODULE_VERSION = "0.1.5";
   const seen = new Set();
   const MAX_SEEN = 300;
 
@@ -127,7 +127,7 @@
         return;
       }
       postRoll(roll).catch(err => {
-        console.error(`${MODULE_ID} | Failed to post DDB roll`, err, roll);
+        console.error(`${MODULE_ID} | Failed to post DDB roll`, { id: roll?.id || null, title: roll?.title || null, reason: String(err?.message || err) });
         emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", { ok: false, reason: String(err?.message || err), id: roll?.id || null, at: Date.now() });
       });
     });
