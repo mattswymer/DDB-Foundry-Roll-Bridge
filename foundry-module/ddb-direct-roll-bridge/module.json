@@ -2,7 +2,7 @@
   "id": "ddb-direct-roll-bridge",
   "title": "DDB Direct Roll Bridge",
   "description": "Receives D&D Beyond rolls from the companion Chrome extension and mirrors them into Foundry chat.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "compatibility": {
     "minimum": "11",
     "verified": "13"
@@ -17,5 +17,6 @@
   ],
   "styles": [
     "styles/roll-card.css"
-  ]
+  ],
+  "download": "https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/releases/download/v1.0.1/ddb-direct-roll-bridge.zip"
 }
