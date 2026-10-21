@@ -1,41 +1,54 @@
-# DDB → Foundry Roll Bridge
+# DDB Direct Roll Bridge
 
-**Version 1.0.0** · Chrome/Edge extension + Foundry VTT module
+**A lightweight D&D Beyond → Foundry VTT roll mirror**
 
-A lightweight bridge that mirrors completed rolls from the D&D Beyond game log into Foundry VTT chat as readable, Foundry-styled cards.
+[![Latest Release](https://img.shields.io/github/v/release/mattswymer/DDB-Foundry-Roll-Bridge?label=release)](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/releases)
+[![Issues](https://img.shields.io/github/issues/mattswymer/DDB-Foundry-Roll-Bridge)](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/issues)
+[![License](https://img.shields.io/github/license/mattswymer/DDB-Foundry-Roll-Bridge)](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/blob/main/LICENSE)
 
-It is designed for live tabletop sessions: open your D&D Beyond campaign/game log and your Foundry world, roll normally on D&D Beyond, and see the result appear in Foundry chat.
+Roll on D&D Beyond and see the result appear in Foundry VTT chat. This project combines a Chrome/Edge browser extension with a small Foundry module to mirror completed rolls from the visible D&D Beyond game log into readable, Foundry-styled chat cards.
+
+**Current version:** 1.0.1 · **Package type:** Foundry VTT module + browser extension
+
+## Quick links
+
+- **[Install the Foundry module](#1-install-the-foundry-module)**
+- **[Install the Chrome/Edge extension](#2-install-the-browser-extension)**
+- [Latest release downloads](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/releases)
+- [Report a bug or request a feature](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/issues)
+- [Changelog](CHANGELOG.md)
+- [Source code](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge)
 
 ## Features
 
 - Captures completed rolls from the visible D&D Beyond game log.
 - Displays the character, roll name, formula, dice results, and total when D&D Beyond exposes those details.
-- Filters duplicate representations of the same roll while favoring capture of legitimate rapid rolls.
+- Filters duplicate representations of the same roll while aiming to preserve legitimate rapid rolls.
 - Routes each roll to one eligible Foundry tab rather than posting copies to every open tab.
 - Prefers a ready Foundry GM session and queues rolls briefly while the module starts.
 - Provides extension-popup diagnostics for connection status, rolls seen/routed, acknowledgements, and recent results.
 - Uses a compact chat-card layout that follows Foundry's default text styling where possible.
 
-## What it does not do
+## What it does—and doesn't do
 
 This is a **chat mirror**, not a native Foundry dice integration. The cards are custom chat messages; they are not native Foundry `Roll` objects.
 
-It does not synchronize D&D Beyond characters with Foundry actors, move tokens, apply damage or healing, resolve attacks, automate saving throws, or integrate with Midi-QOL. Those features are intentionally outside this project's scope.
+It does **not** synchronize D&D Beyond characters with Foundry actors, move tokens, apply damage or healing, resolve attacks, automate saving throws, or integrate with Midi-QOL. Those features are intentionally outside this project's scope.
 
 The extension reads D&D Beyond's rendered game-log interface. A D&D Beyond UI change can affect extraction, and some details may be unavailable for particular roll types.
 
 ## Requirements
 
-- A Chromium-based browser such as Google Chrome or Microsoft Edge.
-- A D&D Beyond campaign/game log that displays the rolls you want to mirror.
-- A Foundry VTT world with the **DDB Direct Roll Bridge** module enabled.
+- Google Chrome or Microsoft Edge.
+- A D&D Beyond campaign/game log showing the rolls you want to mirror.
+- A Foundry VTT world with **DDB Direct Roll Bridge** enabled.
 - A Foundry GM session open in a supported browser tab.
 
 ## Installation
 
 ### 1. Install the Foundry module
 
-**Recommended — install by manifest URL:** In Foundry, go to **Add-on Modules → Install Module**, paste the following into the **Manifest URL** field, and select **Install**:
+**Recommended — install by manifest URL:** In Foundry, open **Add-on Modules → Install Module**, paste this URL into **Manifest URL**, and select **Install**:
 
 ```
 https://raw.githubusercontent.com/mattswymer/DDB-Foundry-Roll-Bridge/main/foundry-module/ddb-direct-roll-bridge/module.json
@@ -44,7 +57,7 @@ https://raw.githubusercontent.com/mattswymer/DDB-Foundry-Roll-Bridge/main/foundr
 Alternatively, install manually:
 
 1. Download or clone this repository.
-2. Copy the `foundry-module/ddb-direct-roll-bridge` folder into your Foundry user data directory's `Data/modules/` folder.
+2. Copy `foundry-module/ddb-direct-roll-bridge` into your Foundry user data directory's `Data/modules/` folder.
 3. Start Foundry and enable **DDB Direct Roll Bridge** in the world's **Manage Modules** settings.
 4. Launch the world as the GM.
 
@@ -89,7 +102,7 @@ After updating the code, use the extension page's **Reload** control, then refre
 
 ### The first roll after startup behaves oddly
 
-Allow Foundry and the module to finish loading before testing. If historical game-log entries are forwarded or the first new roll is missed, capture the popup diagnostics and report the sequence of steps that reproduced it.
+Allow Foundry and the module to finish loading before testing. If historical game-log entries are forwarded or the first new roll is missed, capture the popup diagnostics and report the steps that reproduced it.
 
 ## Diagnostics
 
@@ -112,15 +125,26 @@ Host access is limited to D&D Beyond, The Forge, and local Foundry addresses lis
 
 ## Compatibility
 
-- Browser extension: Manifest V3 for Chrome/Edge.
-- Foundry module metadata targets Foundry versions 11 and later; the module has not been exhaustively validated across every Foundry version or system.
-- Live behavior depends on the current D&D Beyond game-log interface.
+- **Browser extension:** Manifest V3 for Chrome/Edge.
+- **Foundry VTT:** package metadata specifies Foundry 11 as the minimum and Foundry 13 as the verified version.
+- **D&D Beyond:** behavior depends on the current rendered game-log interface.
 
-## Version 1.0.0
+The module has not been exhaustively validated across every Foundry version or system. Before relying on it in a session, test the roll types and browser/tab arrangement your table uses.
 
-The 1.0 release consolidates the working read-only bridge, including cross-tab routing and duplicate handling, startup queuing, extension-context cleanup, diagnostics, narrower host permissions, and Foundry-styled chat cards.
+## Version history
 
-Before relying on it in a session, test the specific roll types and browser/tab arrangement used by your table. This project mirrors visible roll results; it does not guarantee native Foundry automation.
+See the [changelog](CHANGELOG.md) for release notes.
+
+## Support and bug reports
+
+If something isn't working, [open an issue on GitHub](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/issues) and include:
+
+- Browser and Foundry versions.
+- The roll type and what you expected to happen.
+- Whether rolls were rapid or multiple tabs were open.
+- Relevant extension-popup counters and diagnostics.
+
+Please avoid posting passwords, cookies, session tokens, or other private account data.
 
 ## License
 
