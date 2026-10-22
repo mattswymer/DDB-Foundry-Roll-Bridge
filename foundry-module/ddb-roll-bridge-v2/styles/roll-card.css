@@ -1,0 +1,16 @@
+.ddb-rb2-card { display: grid; gap: .5rem; }
+.ddb-rb2-header { display: flex; align-items: start; justify-content: space-between; gap: .75rem; border-bottom: 1px solid var(--color-border-light-2); padding-bottom: .4rem; }
+.ddb-rb2-character { font-weight: 700; }
+.ddb-rb2-action { opacity: .85; font-size: .95em; }
+.ddb-rb2-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .2rem .75rem; padding: .45rem .5rem; border-left: 3px solid var(--color-border-light-2); background: var(--color-cool-4); }
+.ddb-rb2-row[data-category="attack"] { border-left-color: var(--color-level-info); }
+.ddb-rb2-row[data-category="damage"] { border-left-color: var(--color-level-warning); }
+.ddb-rb2-row[data-category="healing"] { border-left-color: var(--color-level-success); }
+.ddb-rb2-row[data-category="save"] { border-left-color: var(--color-level-error); }
+.ddb-rb2-row[data-category="initiative"] { border-left-color: var(--color-border-highlight); }
+.ddb-rb2-kind { font-weight: 700; }
+.ddb-rb2-total { font-size: 1.25rem; font-weight: 800; align-self: center; }
+.ddb-rb2-formula, .ddb-rb2-breakdown { grid-column: 1 / -1; font-size: .9em; overflow-wrap: anywhere; }
+.ddb-rb2-tags { display: flex; flex-wrap: wrap; gap: .25rem; }
+.ddb-rb2-tag { border: 1px solid var(--color-border-light-2); border-radius: 3px; padding: 0 .3rem; font-size: .75rem; text-transform: uppercase; letter-spacing: .03em; }
+.ddb-rb2-source { opacity: .65; font-size: .75em; }
