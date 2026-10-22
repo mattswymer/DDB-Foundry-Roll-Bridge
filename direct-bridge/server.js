@@ -326,8 +326,7 @@ const server = http.createServer(async (req, res) => {
       const cobaltSession = cleanCookie(body.cobaltSession);
       stopPump();
       config = { gameId, cobaltSession, skipBeyond20: body.skipBeyond20 !== false };
-      const auth = await mintToken();
-      await seedHistory(auth);
+      await mintToken(); // Validate the cookie now; history is seeded once when capture starts.
       return send(res, 200, { ok: true, gameId, skipBeyond20: config.skipBeyond20, state });
     }
     if (url.pathname === "/start" && req.method === "POST") {
