@@ -1,0 +1,17 @@
+{
+  "name": "ddb-foundry-direct-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local browserless D&D Beyond game-log bridge for Foundry VTT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
