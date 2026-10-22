@@ -46,7 +46,7 @@ export function normalizeMessage(message) {
       rollKind: String(roll?.rollKind ?? ""),
       category: classifyRoll(roll, action),
       formula: rollNotation(roll),
-      total: Number.isFinite(Number(result.total)) ? Number(result.total) : null,
+      total: result.total !== null && result.total !== undefined && Number.isFinite(Number(result.total)) ? Number(result.total) : null,
       breakdown: String(result.text ?? ""),
       values,
       diceNotation: roll?.diceNotation ?? null,
