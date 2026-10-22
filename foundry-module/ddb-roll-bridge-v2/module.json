@@ -1,0 +1,23 @@
+{
+  "id": "ddb-roll-bridge-v2",
+  "title": "DDB Roll Bridge (Direct)",
+  "description": "Direct D&D Beyond game-log capture with typed Foundry chat cards. Requires the local direct bridge service.",
+  "version": "0.1.0",
+  "compatibility": {
+    "minimum": "13",
+    "verified": "14"
+  },
+  "authors": [
+    {
+      "name": "Matt Swymer",
+      "url": "https://github.com/mattswymer"
+    }
+  ],
+  "url": "https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/tree/car-v2-phase-1-2",
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "styles": [
+    "styles/roll-card.css"
+  ]
+}
