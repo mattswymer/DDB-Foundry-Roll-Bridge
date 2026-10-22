@@ -59,4 +59,6 @@ test("normalizes a real-shaped fulfilled event without changing dice totals", ()
 test("ignores non-fulfilled and malformed events", () => {
   assert.equal(normalizeMessage({ id: "1", eventType: "dice/roll/pending", data: { rolls: [{}] } }), null);
   assert.equal(normalizeMessage({ eventType: "dice/roll/fulfilled", data: { rolls: [{}] } }), null);
+  const missingTotal = normalizeMessage({ id: "no-total", eventType: "dice/roll/fulfilled", data: { rolls: [{ rollType: "check" }] } });
+  assert.equal(missingTotal.rolls[0].total, null);
 });
