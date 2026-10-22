@@ -21,8 +21,9 @@ export function rollNotation(roll = {}) {
 }
 
 export function classifyRoll(roll = {}, action = "") {
-  const type = `${roll.rollType ?? ""} ${roll.rollKind ?? ""} ${action ?? ""}`.toLowerCase();
-  if (/initiative/.test(type)) return "initiative";
+  const type = `${roll.rollType ?? ""} ${roll.rollKind ?? ""}`.toLowerCase();
+  const actionType = String(action ?? "").toLowerCase();
+  if (/initiative/.test(type) || /^initiative$/.test(actionType)) return "initiative";
   if (/saving throw|\bsave\b|\bsaving\b/.test(type)) return "save";
   if (/\bheal(?:ing)?\b|hit points restored/.test(type)) return "healing";
   if (/damage|\bforce\b|\bslashing\b|\bpiercing\b|\bbludgeoning\b|\bfire\b|\bcold\b|\blightning\b|\bthunder\b|\bpoison\b|\bpsychic\b|\bradiant\b|\bnecrotic\b|\bacid\b/.test(type)) return "damage";
