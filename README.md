@@ -1,3 +1,5 @@
+> **Experimental v2 branch:** this branch contains a new direct game-log implementation in `direct-bridge/` and `foundry-module/ddb-roll-bridge-v2/`. Start with [README-V2.md](README-V2.md). The `main` branch and its extension-based fallback have not been changed.
+
 # DDB Direct Roll Bridge
 
 **A lightweight D&D Beyond → Foundry VTT roll mirror**
