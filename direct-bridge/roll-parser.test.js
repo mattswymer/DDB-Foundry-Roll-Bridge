@@ -11,6 +11,7 @@ test("reconstructs notation when DDB omits diceNotationStr", () => {
 
 test("classifies the common roll families", () => {
   assert.equal(classifyRoll({ rollType: "to hit" }), "attack");
+  assert.equal(classifyRoll({ rollType: "to hit" }, "Fire Bolt"), "attack");
   assert.equal(classifyRoll({ rollType: "damage" }), "damage");
   assert.equal(classifyRoll({ rollType: "healing" }), "healing");
   assert.equal(classifyRoll({ rollType: "saving throw" }), "save");
