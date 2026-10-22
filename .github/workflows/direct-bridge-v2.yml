@@ -1,0 +1,31 @@
+name: Direct Bridge v2 tests
+
+on:
+  push:
+    branches:
+      - car-v2-phase-1-2
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  parser-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: direct-bridge/package.json
+      - name: Install bridge dependencies
+        working-directory: direct-bridge
+        run: npm install
+      - name: Run roll parser tests
+        working-directory: direct-bridge
+        run: npm test
+      - name: Check JavaScript syntax
+        run: |
+          node --check direct-bridge/server.js
+          node --check foundry-module/ddb-roll-bridge-v2/scripts/main.js
+          node --check foundry-module/ddb-roll-bridge-v2/scripts/roll-parser.js
