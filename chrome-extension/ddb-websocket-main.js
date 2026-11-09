@@ -14,6 +14,9 @@
     onmessageHooksInstalled: 0,
     onmessageAssignments: 0,
     messagesReceived: 0,
+    messagesSent: 0,
+    textMessagesSent: 0,
+    jsonMessagesSent: 0,
     textMessages: 0,
     jsonMessages: 0,
     rollEventsCaptured: 0,
@@ -84,6 +87,41 @@
 
     socket.addEventListener("message", inspectMessage);
     diagnostics.listenersAttached += 1;
+
+    // D&D Beyond sends roll events through this socket; observe outgoing frames too.
+    const nativeSend = socket.send;
+    socket.send = function(data) {
+      diagnostics.messagesSent += 1;
+      if (typeof data === "string") {
+        diagnostics.textMessagesSent += 1;
+        let payload;
+        try {
+          payload = JSON.parse(data);
+          diagnostics.jsonMessagesSent += 1;
+        } catch (_) {}
+
+        if (payload && typeof payload === "object" &&
+            typeof payload.eventType === "string" &&
+            /^dice\\/roll(?:\\/|$)/.test(payload.eventType)) {
+          capture.push(payload);
+          if (capture.length > MAX_CAPTURED_EVENTS) {
+            capture.splice(0, capture.length - MAX_CAPTURED_EVENTS);
+          }
+          diagnostics.rollEventsCaptured += 1;
+
+          const firstRoll = Array.isArray(payload.data?.rolls) ? payload.data.rolls[0] : null;
+          console.info("[DDB Roll Capture]", {
+            direction: "outgoing",
+            eventType: payload.eventType,
+            rollId: payload.data?.rollId ?? null,
+            rollType: firstRoll?.rollType ?? null,
+            action: payload.data?.action ?? null,
+            messageScope: payload.messageScope ?? payload.data?.context?.messageScope ?? null
+          });
+        }
+      }
+      return nativeSend.apply(this, arguments);
+    };
 
     if (onmessageDescriptor?.configurable && onmessageDescriptor.set) {
       let pageHandler = null;
