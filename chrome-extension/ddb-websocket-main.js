@@ -23,6 +23,7 @@
   };
 
   window.__ddbCapture = capture;
+  window.__ddbObservedSockets = [];
   window.__ddbWsDiagnostics = diagnostics;
 
   function inspectMessage(event) {
@@ -71,6 +72,7 @@
 
   function instrumentSocket(socket, args) {
     diagnostics.socketsCreated += 1;
+    window.__ddbObservedSockets.push(socket);
 
     try {
       const endpoint = new URL(String(args[0]), window.location.href);
