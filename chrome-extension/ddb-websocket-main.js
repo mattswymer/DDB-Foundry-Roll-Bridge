@@ -102,7 +102,7 @@
 
         if (payload && typeof payload === "object" &&
             typeof payload.eventType === "string" &&
-            /^dice\\/roll(?:\\/|$)/.test(payload.eventType)) {
+            /^dice\/roll(?:\/|$)/.test(payload.eventType)) {
           capture.push(payload);
           if (capture.length > MAX_CAPTURED_EVENTS) {
             capture.splice(0, capture.length - MAX_CAPTURED_EVENTS);
