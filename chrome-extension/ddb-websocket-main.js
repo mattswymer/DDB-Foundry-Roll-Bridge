@@ -41,7 +41,7 @@
 
     if (!payload || typeof payload !== "object") return;
     if (typeof payload.eventType !== "string" ||
-        !/^dice\\/roll(?:\\/|$)/.test(payload.eventType)) return;
+        !/^dice\/roll(?:\/|$)/.test(payload.eventType)) return;
 
     // Keep the parsed source event intact. Bound memory use during long sessions.
     capture.push(payload);
