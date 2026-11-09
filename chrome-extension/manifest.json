@@ -23,6 +23,17 @@
         "https://dndbeyond.com/*"
       ],
       "js": [
+        "ddb-websocket-main.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://www.dndbeyond.com/*",
+        "https://dndbeyond.com/*"
+      ],
+      "js": [
         "ddb-content.js"
       ],
       "run_at": "document_idle"
