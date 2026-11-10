@@ -269,11 +269,11 @@
     return CONFIG.Dice.D20Roll.fromData(data);
   }
 
-  async function postNativeCheckOrSave(event, kind) {
+  async function postNativeCheckOrSave(event, kind, abilityOverride = null) {
     if (!game.user?.isGM) throw new Error("The Foundry session receiving rolls must be a GM");
     const actor = resolveActorForEvent(event);
     const action = event.data.action;
-    const ability = resolveAbility(action);
+    const ability = abilityOverride || resolveAbility(action);
     const skill = kind === "check" ? resolveSkill(action) : null;
     const resolvedAbility = ability || (skill ? CONFIG.DND5E.skills[skill]?.ability : null);
     if (!resolvedAbility) throw new Error(`Could not identify the ${kind} ability or skill from "${action}"`);
@@ -302,7 +302,8 @@
   }
 
   async function postNativeInitiative(event) {
-    const result = await postNativeCheckOrSave(event, "check");
+    const initiativeAbility = resolveAbility(event.data.action) || "dex";
+    const result = await postNativeCheckOrSave(event, "check", initiativeAbility);
     await result.message.update({
       "system.type": "initiative",
       "system.skill": null
