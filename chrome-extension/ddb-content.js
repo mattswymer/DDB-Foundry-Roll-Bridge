@@ -541,6 +541,21 @@
     log("Ignored existing game-log entries at startup", roots.size);
   }
 
+  const seenWebSocketRollIds = new Set();
+  window.addEventListener("message", event => {
+    if (extensionContextInvalid || event.source !== window || event.origin !== location.origin) return;
+    const message = event.data;
+    if (message?.source !== "ddb-foundry-roll-bridge" || message.type !== "DDB_WS_ROLL") return;
+    const payload = message.payload;
+    const rollId = payload?.data?.rollId;
+    if (payload?.eventType !== "dice/roll/fulfilled" || !rollId || seenWebSocketRollIds.has(rollId)) return;
+    seenWebSocketRollIds.add(rollId);
+    if (seenWebSocketRollIds.size > 300) seenWebSocketRollIds.delete(seenWebSocketRollIds.values().next().value);
+    sendRuntimeMessage({ type: "DDB_ROLL_BRIDGE_FOUND_WS_ROLL", event: payload }, response => {
+      if (response?.accepted) log("Forwarded WebSocket roll", { rollId, routed: !!response.routed });
+    });
+  });
+
   function start() {
     if (extensionContextInvalid || !document.body) return;
     markExistingRollsAsSeen();
