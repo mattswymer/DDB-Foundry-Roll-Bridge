@@ -303,7 +303,7 @@
 
   async function postNativeInitiative(event) {
     const result = await postNativeCheckOrSave(event, "check");
-    result.message.updateSource({
+    await result.message.update({
       "system.type": "initiative",
       "system.skill": null
     });
