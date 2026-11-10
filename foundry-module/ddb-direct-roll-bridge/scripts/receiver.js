@@ -2,6 +2,7 @@
   const MODULE_ID = "ddb-direct-roll-bridge";
   const MODULE_VERSION = "1.0.2";
   const seen = new Set();
+  const latestAttackContexts = new Map();
   const MAX_SEEN = 300;
 
   function log(...args) {
@@ -322,12 +323,120 @@
     return result;
   }
 
+
+  function findDamageSource(event) {
+    const actor = resolveActorForEvent(event);
+    const action = String(event.data.action || "").trim().toLowerCase();
+    const items = actor.items.filter(item => item.name?.toLowerCase() === action);
+    if (items.length !== 1) throw new Error(`Expected one item named "${event.data.action}" on ${actor.name}, found ${items.length}`);
+    const item = items[0];
+    const activities = Array.from(item.system.activities?.values?.() || item.system.activities || [])
+      .filter(activity => Array.isArray(activity.damage?.parts) && activity.damage.parts.length);
+    if (activities.length !== 1) {
+      throw new Error(`Expected one damage activity on ${item.name}, found ${activities.length}`);
+    }
+    return { actor, item, activity: activities[0] };
+  }
+
+  function buildNativeDamageRoll(event, actor, damagePart, source) {
+    const notation = source?.diceNotation;
+    const result = source?.result;
+    if (!notation || !Array.isArray(notation.set) || !result || !Array.isArray(result.values)) {
+      throw new Error("D&D Beyond damage event is missing dice notation or result values");
+    }
+    const sets = notation.set;
+    if (!sets.length || sets.some(s => !/^d\\d+$/i.test(String(s.dieType)))) {
+      throw new Error("Unsupported damage dice notation");
+    }
+    const parts = sets.map(s => {
+      const count = Number(s.count || s.dice?.length || 0);
+      if (!Number.isInteger(count) || count < 1) throw new Error("Invalid damage dice count");
+      return `${count}${String(s.dieType).toLowerCase()}`;
+    });
+    const constant = Number(notation.constant ?? result.constant ?? 0);
+    if (!Number.isFinite(constant)) throw new Error("Invalid D&D Beyond damage modifier");
+    if (constant !== 0) parts.push(String(constant));
+    const formula = parts.join(" + ").replace(/\\+ -/g, "-");
+    const damageType = Array.from(damagePart.types || [])[0];
+    if (!damageType) throw new Error("Foundry activity has no configured damage type for this roll");
+    const roll = new CONFIG.Dice.DamageRoll(formula, actor.getRollData(), {
+      type: damageType,
+      configured: true
+    });
+    const data = roll.toJSON();
+    const diceTerms = data.terms.filter(term => term.faces && term.faces > 0);
+    const expectedDice = diceTerms.reduce((sum, term) => sum + Number(term.number || 1), 0);
+    if (expectedDice !== result.values.length) {
+      throw new Error(`D&D Beyond supplied ${result.values.length} damage dice; Foundry formula expects ${expectedDice}`);
+    }
+    let offset = 0;
+    for (const term of diceTerms) {
+      const count = Number(term.number || 1);
+      term.results = result.values.slice(offset, offset + count).map(value => ({
+        result: Number(value), active: true
+      }));
+      term.evaluated = true;
+      offset += count;
+    }
+    for (const term of data.terms) term.evaluated = true;
+    data.evaluated = true;
+    data.total = Number(result.total);
+    data.options = { ...data.options, type: damageType, configured: true };
+    return CONFIG.Dice.DamageRoll.fromData(data);
+  }
+
+  async function postNativeDamage(event) {
+    if (!game.user?.isGM) throw new Error("The Foundry session receiving rolls must be a GM");
+    const { actor, item, activity } = findDamageSource(event);
+    const key = `${actor.id}:${item.id}`;
+    let usageMessage = game.messages.get(latestAttackContexts.get(key)?.usageMessageId);
+    if (!usageMessage) {
+      const usage = await activity.use(
+        { consume: false, subsequentActions: false },
+        { configure: false }
+      );
+      usageMessage = usage?.message;
+    }
+    if (!usageMessage) throw new Error("Foundry did not create a native activity usage card");
+
+    const sources = event.data.rolls || [];
+    if (!sources.length) throw new Error("D&D Beyond damage event contains no rolls");
+    const damageParts = activity.damage.parts;
+    const rolls = sources.map((source, index) => {
+      const part = damageParts[Math.min(index, damageParts.length - 1)];
+      return buildNativeDamageRoll(event, actor, part, source);
+    });
+    const system = {
+      ...(usageMessage.system?.toObject?.() || usageMessage.system || {}),
+      origin: usageMessage.id
+    };
+    const messageData = {
+      speaker: ChatMessage.getSpeaker({ actor }),
+      flavor: `${item.name} - Damage Roll`,
+      type: "damage",
+      system,
+      flags: {
+        [MODULE_ID]: {
+          ddbRollId: event.data.rollId,
+          source: "ddb-websocket",
+          characterId: event.entityId || event.data.context?.entityId || null
+        }
+      }
+    };
+    if (event.messageScope === "userId" || event.data.context?.messageScope === "userId") {
+      messageData.whisper = ChatMessage.getWhisperRecipients("GM").map(user => user.id);
+    }
+    const message = await CONFIG.Dice.DamageRoll.toMessage(rolls, messageData, { create: true });
+    return { message, usageMessage, actor, item };
+  }
+
   async function postNativeEvent(event) {
     const source = event?.data?.rolls?.[0];
     const type = String(source?.rollType || "").toLowerCase();
     if (type === "to hit") return postNativeAttack(event);
     if (type === "check") return postNativeCheckOrSave(event, "check");
     if (type === "save") return postNativeCheckOrSave(event, "save");
+    if (type === "damage") return postNativeDamage(event);
     if (type === "roll" && /initiative/i.test(String(event.data.action || ""))) {
       return postNativeInitiative(event);
     }
@@ -380,6 +489,7 @@
     }
 
     const message = await CONFIG.Dice.D20Roll.toMessage([roll], messageData, { create: true });
+    latestAttackContexts.set(`${actor.id}:${item.id}`, { usageMessageId: usageMessage.id, attackMessageId: message.id });
     return { message, usageMessage, actor, item };
   }
 
