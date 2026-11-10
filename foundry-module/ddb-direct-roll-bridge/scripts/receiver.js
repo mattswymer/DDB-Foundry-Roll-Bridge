@@ -148,6 +148,10 @@
     return message;
   }
 
+  function normalizeItemName(name) {
+    return String(name || "").trim().replace(/\\s*\\(legacy\\)$/i, "").toLowerCase();
+  }
+
   function findAttackSource(event) {
     const data = event?.data;
     const name = String(data?.context?.name || "").trim();
@@ -158,7 +162,7 @@
     if (actors.length !== 1) throw new Error(`Expected one Foundry actor named "${name}", found ${actors.length}`);
     const actor = actors[0];
 
-    const items = actor.items.filter(i => i.name?.toLowerCase() === action.toLowerCase());
+    const items = actor.items.filter(i => normalizeItemName(i.name) === normalizeItemName(action));
     if (items.length !== 1) throw new Error(`Expected one item named "${action}" on ${actor.name}, found ${items.length}`);
     const item = items[0];
 
@@ -409,7 +413,7 @@
   function findDamageSource(event) {
     const actor = resolveActorForEvent(event);
     const action = String(event.data.action || "").trim().toLowerCase();
-    const items = actor.items.filter(item => item.name?.toLowerCase() === action);
+    const items = actor.items.filter(item => normalizeItemName(item.name) === normalizeItemName(action));
     if (items.length !== 1) throw new Error(`Expected one item named "${event.data.action}" on ${actor.name}, found ${items.length}`);
     const item = items[0];
     const activities = Array.from(item.system.activities?.values?.() || item.system.activities || [])
