@@ -149,7 +149,7 @@
   }
 
   function normalizeItemName(name) {
-    return String(name || "").trim().replace(/\\s*\\(legacy\\)$/i, "").toLowerCase();
+    return String(name || "").trim().replace(/\s*\(legacy\)$/i, "").toLowerCase();
   }
 
   function findAttackSource(event) {
