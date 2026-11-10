@@ -177,6 +177,162 @@
     return CONFIG.Dice.D20Roll.fromData(data);
   }
 
+
+  function resolveActorForEvent(event) {
+    const name = String(event?.data?.context?.name || "").trim();
+    if (!name) throw new Error("Missing D&D Beyond character name");
+    const actors = game.actors.filter(a => a.name?.toLowerCase() === name.toLowerCase());
+    if (actors.length !== 1) throw new Error(`Expected one Foundry actor named "${name}", found ${actors.length}`);
+    return actors[0];
+  }
+
+  function resolveAbility(action) {
+    const value = String(action || "").trim().toLowerCase();
+    const abilities = CONFIG.DND5E.abilities || {};
+    for (const [key, data] of Object.entries(abilities)) {
+      if (key.toLowerCase() === value || String(data.label || "").toLowerCase() === value) return key;
+    }
+    return null;
+  }
+
+  function resolveSkill(action) {
+    const value = String(action || "").trim().toLowerCase();
+    const skills = CONFIG.DND5E.skills || {};
+    for (const [key, data] of Object.entries(skills)) {
+      if (key.toLowerCase() === value || String(data.label || "").toLowerCase() === value) return key;
+    }
+    return null;
+  }
+
+  function buildNativeCheckSaveRoll(event, actor, ability) {
+    const source = event.data.rolls?.[0];
+    const notation = source?.diceNotation;
+    const result = source?.result;
+    if (!notation || !Array.isArray(notation.set) || !result || !Array.isArray(result.values)) {
+      throw new Error("D&D Beyond event is missing dice notation or result values");
+    }
+    const sets = notation.set;
+    if (!sets.length || sets.some(s => String(s.dieType).toLowerCase() !== "d20")) {
+      throw new Error("Native check/save reconstruction currently requires d20 dice");
+    }
+    const parts = sets.map(s => {
+      const count = Number(s.count || s.dice?.length || 0);
+      if (!Number.isInteger(count) || count < 1) throw new Error("Invalid d20 count in D&D Beyond notation");
+      let part = `${count}d20`;
+      const operation = Number(s.operation || 0);
+      if (count > 1 && operation === 2) part += "kh1";
+      else if (count > 1 && operation === 1) part += "kl1";
+      return part;
+    });
+    const constant = Number(notation.constant ?? result.constant ?? 0);
+    if (!Number.isFinite(constant)) throw new Error("Invalid D&D Beyond roll modifier");
+    if (constant !== 0) parts.push(String(constant));
+    const formula = parts.join(" + ").replace(/\\+ -/g, "-");
+    const rollOptions = {
+      ability,
+      target: undefined,
+      criticalSuccess: 20,
+      criticalFailure: 1,
+      configured: true,
+      originatingMessage: null
+    };
+    const roll = new CONFIG.Dice.D20Roll(formula, actor.getRollData(), rollOptions);
+    const data = roll.toJSON();
+    const dieTerms = data.terms.filter(t => t.class === "D20Die" || t.faces === 20);
+    const expectedDice = dieTerms.reduce((sum, t) => sum + Number(t.number || 1), 0);
+    if (expectedDice !== result.values.length) {
+      throw new Error(`D&D Beyond supplied ${result.values.length} d20 values; Foundry formula expects ${expectedDice}`);
+    }
+    const keptValue = Number(result.total) - constant;
+    let offset = 0;
+    let selectedOne = false;
+    for (const term of data.terms) {
+      if (term.class === "D20Die" || term.faces === 20) {
+        const count = Number(term.number || 1);
+        term.results = result.values.slice(offset, offset + count).map(value => {
+          const face = Number(value);
+          let active = true;
+          const hasKeepRule = sets.some(s => Number(s.count || 0) > 1 && Number(s.operation || 0) !== 0);
+          if (hasKeepRule) {
+            active = !selectedOne && face === keptValue;
+            if (active) selectedOne = true;
+          }
+          return { result: face, active };
+        });
+        offset += count;
+      }
+      term.evaluated = true;
+    }
+    data.evaluated = true;
+    data.total = Number(result.total);
+    data.options = { ...data.options, ...rollOptions };
+    return CONFIG.Dice.D20Roll.fromData(data);
+  }
+
+  async function postNativeCheckOrSave(event, kind) {
+    if (!game.user?.isGM) throw new Error("The Foundry session receiving rolls must be a GM");
+    const actor = resolveActorForEvent(event);
+    const action = event.data.action;
+    const ability = resolveAbility(action);
+    const skill = kind === "check" ? resolveSkill(action) : null;
+    const resolvedAbility = ability || (skill ? CONFIG.DND5E.skills[skill]?.ability : null);
+    if (!resolvedAbility) throw new Error(`Could not identify the ${kind} ability or skill from "${action}"`);
+    const roll = buildNativeCheckSaveRoll(event, actor, resolvedAbility);
+    const system = kind === "save"
+      ? { ability: resolvedAbility, type: "ability" }
+      : { ability: resolvedAbility, skill: skill || null, tool: null, type: "ability" };
+    const messageData = {
+      speaker: ChatMessage.getSpeaker({ actor }),
+      flavor: `${action} - ${kind === "save" ? "Saving Throw" : "Ability Check"}`,
+      type: kind,
+      system,
+      flags: {
+        [MODULE_ID]: {
+          ddbRollId: event.data.rollId,
+          source: "ddb-websocket",
+          characterId: event.entityId || event.data.context?.entityId || null
+        }
+      }
+    };
+    if (event.messageScope === "userId" || event.data.context?.messageScope === "userId") {
+      messageData.whisper = ChatMessage.getWhisperRecipients("GM").map(user => user.id);
+    }
+    const message = await CONFIG.Dice.D20Roll.toMessage([roll], messageData, { create: true });
+    return { message, actor, roll, ability: resolvedAbility, skill };
+  }
+
+  async function postNativeInitiative(event) {
+    const result = await postNativeCheckOrSave(event, "check");
+    result.message.updateSource({
+      "system.type": "initiative",
+      "system.skill": null
+    });
+    const combatants = game.combat?.combatants?.filter(c => c.actor?.id === result.actor.id) || [];
+    if (combatants.length === 1) {
+      await combatants[0].update({ initiative: result.roll.total });
+      log("Updated combat initiative from D&D Beyond", {
+        actor: result.actor.name, total: result.roll.total, combatant: combatants[0].id
+      });
+    } else {
+      log("Posted initiative roll but did not update combat", {
+        actor: result.actor.name, matchingCombatants: combatants.length
+      });
+    }
+    return result;
+  }
+
+  async function postNativeEvent(event) {
+    const source = event?.data?.rolls?.[0];
+    const type = String(source?.rollType || "").toLowerCase();
+    if (type === "to hit") return postNativeAttack(event);
+    if (type === "check") return postNativeCheckOrSave(event, "check");
+    if (type === "save") return postNativeCheckOrSave(event, "save");
+    if (type === "roll" && /initiative/i.test(String(event.data.action || ""))) {
+      return postNativeInitiative(event);
+    }
+    throw new Error(`Native handling not yet enabled for roll type "${source?.rollType || "unknown"}"`);
+  }
+
   async function postNativeAttack(event) {
     const rollId = event?.data?.rollId;
     if (!game.user?.isGM) throw new Error("The Foundry session receiving rolls must be a GM");
@@ -262,7 +418,7 @@
     }
     remember(id);
     try {
-      const result = await postNativeAttack(event);
+      const result = await postNativeEvent(event);
       emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
         ok: true, id, messageId: result.message?.id || null,
         usageMessageId: result.usageMessage?.id || null,
