@@ -29,6 +29,22 @@
   window.__ddbObservedSockets = [];
   window.__ddbWsDiagnostics = diagnostics;
 
+  const publishedRollIds = new Set();
+
+  function publishFulfilledRoll(payload, direction) {
+    if (payload?.eventType !== "dice/roll/fulfilled") return;
+    const rollId = payload.data?.rollId;
+    if (!rollId || publishedRollIds.has(rollId)) return;
+    publishedRollIds.add(rollId);
+    if (publishedRollIds.size > 300) publishedRollIds.delete(publishedRollIds.values().next().value);
+    window.postMessage({
+      source: "ddb-foundry-roll-bridge",
+      type: "DDB_WS_ROLL",
+      direction,
+      payload
+    }, window.location.origin);
+  }
+
   function inspectMessage(event) {
     if (seenMessageEvents.has(event)) return;
     seenMessageEvents.add(event);
@@ -52,6 +68,7 @@
         !/^dice\/roll(?:\/|$)/.test(payload.eventType)) return;
 
     capture.push(payload);
+    publishFulfilledRoll(payload, "incoming");
     if (capture.length > MAX_CAPTURED_EVENTS) {
       capture.splice(0, capture.length - MAX_CAPTURED_EVENTS);
     }
@@ -104,6 +121,7 @@
             typeof payload.eventType === "string" &&
             /^dice\/roll(?:\/|$)/.test(payload.eventType)) {
           capture.push(payload);
+          publishFulfilledRoll(payload, "outgoing");
           if (capture.length > MAX_CAPTURED_EVENTS) {
             capture.splice(0, capture.length - MAX_CAPTURED_EVENTS);
           }
