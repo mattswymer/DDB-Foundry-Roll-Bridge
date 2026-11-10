@@ -383,7 +383,7 @@
     return recentWebSocketAttacks.some(entry =>
       entry.total === Number(roll.total) &&
       (!entry.character || !character || entry.character === character) &&
-      title.includes(entry.action)
+      !!entry.action && title.includes(entry.action)
     );
   }
 
