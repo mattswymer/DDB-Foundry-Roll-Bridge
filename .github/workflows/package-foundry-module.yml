@@ -13,10 +13,15 @@ permissions:
 
 jobs:
   release:
+    if: false
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Read module version
+        id: version
+        run: echo "version=$(jq -r .version foundry-module/ddb-direct-roll-bridge/module.json)" >> "$GITHUB_OUTPUT"
 
       - name: Package Foundry module
         run: |
@@ -26,9 +31,9 @@ jobs:
       - name: Publish release and ZIP
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.1
+          tag_name: v${{ steps.version.outputs.version }}
           target_commitish: main
-          name: DDB Direct Roll Bridge v1.0.1
-          body: Install this release through Foundry using the module manifest URL in the README.
+          name: DDB Direct Roll Bridge v${{ steps.version.outputs.version }}
+          body: Install this release through Foundry using the stable module manifest URL.
           files: ddb-direct-roll-bridge.zip
           make_latest: true
