@@ -93,6 +93,13 @@
   function dispatchRollToFoundry(roll) {
     // Do not inject inline scripts. Foundry's CSP blocks inline execution.
     // The Foundry module listens for this DOM event directly.
+    if (roll?._ddbWebSocketEvent) {
+      document.dispatchEvent(new CustomEvent("DDB_DIRECT_ROLL_BRIDGE_WS_ROLL", {
+        detail: JSON.stringify(roll._ddbWebSocketEvent)
+      }));
+      sendStatus({ lastForwardedRollId: roll.id, lastForwardedAt: Date.now(), pendingRollCount: pendingRolls.length });
+      return;
+    }
     document.dispatchEvent(new CustomEvent("DDB_DIRECT_ROLL_BRIDGE_ROLL", {
       detail: JSON.stringify(roll)
     }));
@@ -182,6 +189,18 @@
       sendResponse({ ok: false, reason: "extension-context-invalid" });
       return true;
     }
+    if (message?.type === "DDB_ROLL_BRIDGE_WS_ROLL") {
+      const event = message.event;
+      const rollId = event?.data?.rollId;
+      if (event?.eventType !== "dice/roll/fulfilled" || !rollId) {
+        sendResponse({ ok: false, reason: "invalid-ws-roll" });
+        return true;
+      }
+      const forwarded = forwardToFoundryPage({ id: rollId, _ddbWebSocketEvent: event });
+      sendResponse({ ok: forwarded, foundryDetected: isFoundry, moduleReady, isGM });
+      return true;
+    }
+
     if (message?.type === "DDB_ROLL_BRIDGE_ROLL") {
       const forwarded = forwardToFoundryPage(message.roll);
       sendResponse({ ok: forwarded, foundryDetected: isFoundry, moduleReady, isGM });
