@@ -163,7 +163,7 @@
             active = !selectedOne && face === keptValue;
             if (active) selectedOne = true;
           }
-          return { result: face, active };
+          return { result: face, active, discarded: !active };
         });
         valuesUsed += count;
         term.evaluated = true;
@@ -258,7 +258,7 @@
             active = !selectedOne && face === keptValue;
             if (active) selectedOne = true;
           }
-          return { result: face, active };
+          return { result: face, active, discarded: !active };
         });
         offset += count;
       }
