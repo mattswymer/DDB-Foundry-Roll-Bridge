@@ -581,6 +581,7 @@
         if (isNativeType) {
           recentWebSocketRolls.push({
             at: Date.now(),
+            rollId,
             rollType,
             action: cleanText(payload.data?.action).toLowerCase(),
             character: cleanText(payload.data?.context?.name).toLowerCase(),
@@ -593,6 +594,20 @@
         log("WebSocket roll was not routed to Foundry", { rollId, reason: response?.reason || "no Foundry destination" });
       }
     });
+  });
+
+  // If Foundry rejects a queued/forwarded WebSocket roll, release its
+  // temporary DOM-suppression claim so the legacy card can be submitted.
+  chrome.runtime.onMessage.addListener(message => {
+    if (message?.type !== "DDB_ROLL_BRIDGE_WS_ACK") return;
+    const ack = message.ack || {};
+    if (ack.ok === false && ack.id) {
+      const index = recentWebSocketRolls.findIndex(entry => entry.rollId === ack.id);
+      if (index !== -1) recentWebSocketRolls.splice(index, 1);
+      log("Released DOM coverage after Foundry rejected WebSocket roll", {
+        rollId: ack.id, reason: ack.reason || "unknown"
+      });
+    }
   });
 
   function start() {
