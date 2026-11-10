@@ -48,6 +48,7 @@ const FOUNDRY_URL_PATTERNS = [
   "https://127.0.0.1/*"
 ];
 const recentRollSignatures = new Map();
+const wsRollSourceTabs = new Map();
 
 function normalizeRollPart(value) {
   return String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -250,7 +251,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
     }
     STATE.wsRollIds.add(rollId);
-    if (STATE.wsRollIds.size > MAX_SEEN) STATE.wsRollIds.delete(STATE.wsRollIds.values().next().value);
+    if (sender?.tab?.id != null) wsRollSourceTabs.set(rollId, sender.tab.id);
+    if (STATE.wsRollIds.size > MAX_SEEN) {
+      const oldestId = STATE.wsRollIds.values().next().value;
+      STATE.wsRollIds.delete(oldestId);
+      wsRollSourceTabs.delete(oldestId);
+    }
     broadcastWsRoll(event).then(sent => sendResponse({ ok: true, accepted: true, routed: sent > 0 }))
       .catch(error => {
         STATE.counters.foundryErrors++;
@@ -347,10 +353,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === "DDB_ROLL_BRIDGE_FOUNDRY_ACK") {
+    const ack = message.ack || null;
     STATE.foundry.lastAckAt = Date.now();
-    STATE.foundry.lastAck = message.ack || null;
+    STATE.foundry.lastAck = ack;
     STATE.counters.foundryAcks++;
-    if (message.ack && message.ack.ok === false) STATE.counters.foundryErrors++;
+    if (ack && ack.ok === false) STATE.counters.foundryErrors++;
+
+    // A failed Foundry ACK is routed back to the D&D Beyond tab that supplied
+    // the roll, allowing its legacy DOM scraper to submit the visible card.
+    const sourceTabId = ack?.id ? wsRollSourceTabs.get(ack.id) : null;
+    if (ack?.id) wsRollSourceTabs.delete(ack.id);
+    if (ack?.ok === false && sourceTabId != null) {
+      chrome.tabs.sendMessage(sourceTabId, {
+        type: "DDB_ROLL_BRIDGE_WS_ACK", ack
+      }).catch(() => {});
+    } else if (ack?.ok === true && ack?.id) {
+      wsRollSourceTabs.delete(ack.id);
+    }
     sendResponse({ ok: true });
     return true;
   }
