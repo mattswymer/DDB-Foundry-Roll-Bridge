@@ -110,6 +110,7 @@
     const nativeSend = socket.send;
     socket.send = function(data) {
       diagnostics.messagesSent += 1;
+      let fulfilledPayload = null;
       if (typeof data === "string") {
         diagnostics.textMessagesSent += 1;
         let payload;
@@ -122,7 +123,6 @@
             typeof payload.eventType === "string" &&
             /^dice\/roll(?:\/|$)/.test(payload.eventType)) {
           capture.push(payload);
-          // Outgoing frames are diagnostic only; relay only server-confirmed incoming rolls.
           if (capture.length > MAX_CAPTURED_EVENTS) {
             capture.splice(0, capture.length - MAX_CAPTURED_EVENTS);
           }
@@ -137,9 +137,21 @@
             action: payload.data?.action ?? null,
             messageScope: payload.messageScope ?? payload.data?.context?.messageScope ?? null
           });
+
+          if (payload.eventType === "dice/roll/fulfilled" && payload.data?.persist !== false) {
+            fulfilledPayload = payload;
+          }
         }
       }
-      return nativeSend.apply(this, arguments);
+
+      // Relay after native send() accepts the frame. DDB does not echo these
+      // fulfilled events to this client; the outgoing frame contains its final result.
+      const sent = nativeSend.apply(this, arguments);
+      if (fulfilledPayload) {
+        publishFulfilledRoll(fulfilledPayload, "outgoing");
+        diagnostics.outgoingFulfilledRolls = (diagnostics.outgoingFulfilledRolls || 0) + 1;
+      }
+      return sent;
     };
 
     if (onmessageDescriptor?.configurable && onmessageDescriptor.set) {
