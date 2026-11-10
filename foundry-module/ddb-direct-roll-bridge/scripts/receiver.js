@@ -31,8 +31,8 @@
   function getSpeaker(characterName) {
     const name = String(characterName || "").trim();
     if (!name) return ChatMessage.getSpeaker();
-    const actor = game.actors?.find?.(a => a.name?.toLowerCase() === name.toLowerCase());
-    if (actor) return ChatMessage.getSpeaker({ actor });
+    const actors = game.actors?.filter?.(a => a.name?.toLowerCase() === name.toLowerCase()) || [];
+    if (actors.length === 1) return ChatMessage.getSpeaker({ actor: actors[0] });
     return { ...ChatMessage.getSpeaker(), alias: name };
   }
 
@@ -87,30 +87,38 @@
     const notation = source.diceNotation || {};
     const sets = Array.isArray(notation.set) ? notation.set : [];
     const values = Array.isArray(result.values) ? result.values : [];
-    const formulaParts = sets.map(set => {
+    let valueOffset = 0;
+    const formulaParts = [];
+    const diceParts = [];
+    for (const set of sets) {
       const count = Number(set.count || set.dice?.length || 0);
       const dieType = String(set.dieType || "die").toLowerCase();
-      return count > 0 ? `${count}${dieType}` : dieType;
-    });
+      let part = count > 0 ? `${count}${dieType}` : dieType;
+      const operation = Number(set.operation || 0);
+      if (count > 1 && operation === 2) part += "kh1";
+      else if (count > 1 && operation === 1) part += "kl1";
+      formulaParts.push(part);
+
+      const available = count > 0 ? values.slice(valueOffset, valueOffset + count) : [];
+      if (available.length) diceParts.push(`${dieType}: ${available.map(Number).join(", ")}`);
+      valueOffset += count;
+    }
+    if (valueOffset < values.length) diceParts.push(`Additional results: ${values.slice(valueOffset).map(Number).join(", ")}`);
     const constant = Number(notation.constant ?? result.constant ?? 0);
     if (Number.isFinite(constant) && constant !== 0) formulaParts.push(String(constant));
     const formula = formulaParts.join(" + ").replace(/\\+ -/g, "-");
     const character = String(data.context?.name || "D&D Beyond").trim();
     const action = String(data.action || "Roll").trim();
     const rollType = String(source.rollType || "roll").trim();
-    const diceSummary = values.length
-      ? values.map((value, index) => {
-          const dieType = sets.length === 1 ? String(sets[0].dieType || "die") : "die";
-          return `${dieType} ${Number(value)}`;
-        }).join(", ")
-      : "";
+    const total = result.total !== null && result.total !== undefined && Number.isFinite(Number(result.total))
+      ? Number(result.total) : null;
     return {
       character,
       title: `${action} — ${rollType} (Fallback)`,
       formula,
-      diceSummary,
+      diceSummary: diceParts.join("; "),
       dice: sets.map(set => ({ count: Number(set.count || set.dice?.length || 0) })),
-      total: Number.isFinite(Number(result.total)) ? Number(result.total) : null,
+      total,
       rawText: `Native Foundry processing failed: ${String(reason || "unknown error")}`
     };
   }
