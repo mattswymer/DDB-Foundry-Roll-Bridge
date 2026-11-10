@@ -306,8 +306,10 @@
     const initiativeAbility = resolveAbility(event.data.action) || "dex";
     const result = await postNativeCheckOrSave(event, "check", initiativeAbility);
     await result.message.update({
+      flavor: "Initiative",
       "system.type": "initiative",
-      "system.skill": null
+      "system.skill": null,
+      "flags.core.initiativeRoll": true
     });
     const combatants = game.combat?.combatants?.filter(c => c.actor?.id === result.actor.id) || [];
     if (combatants.length === 1) {
