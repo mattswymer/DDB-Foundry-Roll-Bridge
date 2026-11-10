@@ -2,6 +2,19 @@
 
 All notable changes to DDB Direct Roll Bridge are documented here.
 
+## [1.0.3] - 2026-11-09
+
+- Reconstruct D&D Beyond attack, ability-check, saving-throw, initiative, and damage rolls as native D&D5e chat messages.
+- Update a matching combatant's initiative when an initiative roll can be mapped unambiguously.
+- Preserve the selected attack targets on native damage cards so D&D5e's Apply Damage workflow can be used.
+- Relay only server-confirmed incoming WebSocket rolls; outgoing frames remain diagnostic.
+- Bound the retained WebSocket socket list.
+
+## [1.0.2] - 2026-11-09
+
+- Added D&D Beyond WebSocket roll capture and GM-side routing.
+- Reconstructed attack rolls using D&D Beyond's actual die results and modifiers, including target hit/miss evaluation.
+
 ## [1.0.1] - 2026-10-20
 
 - Added Foundry release packaging and a downloadable module ZIP.
