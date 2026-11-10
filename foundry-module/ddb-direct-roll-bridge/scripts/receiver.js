@@ -111,7 +111,7 @@
     });
     const constant = Number(notation.constant ?? result.constant ?? 0);
     if (!Number.isFinite(constant)) throw new Error("Invalid D&D Beyond roll modifier");
-    if (constant !== 0) formulaParts.push(constant > 0 ? `+ ${constant}` : `- ${Math.abs(constant)}`);
+    if (constant !== 0) formulaParts.push(String(constant));
     const formula = formulaParts.join(" + ").replace(/\+ -/g, "-");
 
     const targets = usageMessage.system?.targets || [];
