@@ -93,6 +93,7 @@
   function instrumentSocket(socket, args) {
     diagnostics.socketsCreated += 1;
     window.__ddbObservedSockets.push(socket);
+    if (window.__ddbObservedSockets.length > 50) window.__ddbObservedSockets.shift();
 
     try {
       const endpoint = new URL(String(args[0]), window.location.href);
@@ -121,7 +122,7 @@
             typeof payload.eventType === "string" &&
             /^dice\/roll(?:\/|$)/.test(payload.eventType)) {
           capture.push(payload);
-          publishFulfilledRoll(payload, "outgoing");
+          // Outgoing frames are diagnostic only; relay only server-confirmed incoming rolls.
           if (capture.length > MAX_CAPTURED_EVENTS) {
             capture.splice(0, capture.length - MAX_CAPTURED_EVENTS);
           }
