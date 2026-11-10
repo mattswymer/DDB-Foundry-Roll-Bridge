@@ -343,7 +343,7 @@
   function findHealingSource(event) {
     const actor = resolveActorForEvent(event);
     const action = String(event.data.action || "").trim().toLowerCase();
-    const normalizeName = name => String(name || "").trim().replace(/\\s*\\(legacy\\)$/i, "").toLowerCase();
+    const normalizeName = name => String(name || "").trim().replace(/\s*\(legacy\)$/i, "").toLowerCase();
     const items = actor.items.filter(item => normalizeName(item.name) === normalizeName(action));
     if (items.length !== 1) throw new Error(`Expected one item matching "${event.data.action}" on ${actor.name}, found ${items.length}`);
     const item = items[0];
