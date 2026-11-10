@@ -2,6 +2,10 @@
 
 All notable changes to DDB Direct Roll Bridge are documented here.
 
+## [1.0.6] - 2026-11-09
+
+- Preserve discarded d20 results in native Foundry attack, ability-check, and saving-throw rolls so advantage and disadvantage display both dice.
+
 ## [1.0.5] - 2026-11-09
 
 - Match D&D Beyond healing spell names to imported Foundry items with a trailing `(Legacy)` suffix.
