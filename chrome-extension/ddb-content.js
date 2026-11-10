@@ -373,24 +373,27 @@
     }
   }
 
-  const recentWebSocketAttacks = [];
+  const recentWebSocketRolls = [];
 
-  function isCoveredByWebSocketAttack(roll) {
+  function isCoveredByWebSocketRoll(roll) {
     const now = Date.now();
-    while (recentWebSocketAttacks.length && now - recentWebSocketAttacks[0].at > 3000) recentWebSocketAttacks.shift();
+    while (recentWebSocketRolls.length && now - recentWebSocketRolls[0].at > 3000) recentWebSocketRolls.shift();
     const character = cleanText(roll.character).toLowerCase();
     const title = cleanText(`${roll.title || ""} ${roll.rawText || ""}`).toLowerCase();
-    return recentWebSocketAttacks.some(entry =>
+    return recentWebSocketRolls.some(entry =>
       entry.total === Number(roll.total) &&
       (!entry.character || !character || entry.character === character) &&
-      !!entry.action && title.includes(entry.action)
+      (
+        (!!entry.action && title.includes(entry.action)) ||
+        (entry.rollType === "roll" && /initiative/i.test(title))
+      )
     );
   }
 
   function submitRoll(roll, root) {
     if (extensionContextInvalid || !roll?.id || seen.has(roll.id)) return;
-    if (isCoveredByWebSocketAttack(roll)) {
-      debug("Suppressed DOM duplicate of a WebSocket attack", { title: roll.title, total: roll.total });
+    if (isCoveredByWebSocketRoll(roll)) {
+      debug("Suppressed DOM duplicate of a native WebSocket roll", { title: roll.title, total: roll.total });
       return;
     }
 
@@ -572,14 +575,18 @@
     const firstRoll = payload.data?.rolls?.[0];
     sendRuntimeMessage({ type: "DDB_ROLL_BRIDGE_FOUND_WS_ROLL", event: payload }, response => {
       if (response?.accepted && response?.routed) {
-        if (String(firstRoll?.rollType || "").toLowerCase() === "to hit") {
-          recentWebSocketAttacks.push({
+        const rollType = String(firstRoll?.rollType || "").toLowerCase();
+        const isNativeType = ["to hit", "check", "save", "damage", "heal"].includes(rollType) ||
+          (rollType === "roll" && /initiative/i.test(String(payload.data?.action || "")));
+        if (isNativeType) {
+          recentWebSocketRolls.push({
             at: Date.now(),
+            rollType,
             action: cleanText(payload.data?.action).toLowerCase(),
             character: cleanText(payload.data?.context?.name).toLowerCase(),
             total: Number(firstRoll?.result?.total)
           });
-          if (recentWebSocketAttacks.length > 20) recentWebSocketAttacks.shift();
+          if (recentWebSocketRolls.length > 30) recentWebSocketRolls.shift();
         }
         log("Forwarded WebSocket roll", { rollId, routed: true });
       } else {
