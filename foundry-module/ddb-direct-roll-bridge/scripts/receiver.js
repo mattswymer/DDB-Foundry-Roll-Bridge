@@ -106,7 +106,7 @@
     if (valueOffset < values.length) diceParts.push(`Additional results: ${values.slice(valueOffset).map(Number).join(", ")}`);
     const constant = Number(notation.constant ?? result.constant ?? 0);
     if (Number.isFinite(constant) && constant !== 0) formulaParts.push(String(constant));
-    const formula = formulaParts.join(" + ").replace(/\\+ -/g, "-");
+    const formula = formulaParts.join(" + ").replace(/\+ -/g, "-");
     const character = String(data.context?.name || "D&D Beyond").trim();
     const action = String(data.action || "Roll").trim();
     const rollType = String(source.rollType || "roll").trim();
