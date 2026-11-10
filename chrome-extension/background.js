@@ -1,6 +1,7 @@
 const STATE = {
   recentRolls: [],
   lastRollIds: new Set(),
+  wsRollIds: new Set(),
   ddb: {
     detected: false,
     url: null,
@@ -144,6 +145,35 @@ function rememberRoll(roll) {
   return true;
 }
 
+async function broadcastWsRoll(event) {
+  let tabs;
+  try { tabs = await chrome.tabs.query({ url: FOUNDRY_URL_PATTERNS }); }
+  catch (error) {
+    STATE.counters.foundryErrors++;
+    console.error("[DDB → Foundry Roll Bridge] Could not query Foundry tabs for WebSocket roll", error);
+    return 0;
+  }
+  const rollId = event?.data?.rollId;
+  const candidates = tabs
+    .filter(tab => tab.id && isSupportedFoundryUrl(tab.url))
+    .sort((a, b) =>
+      Number(!!STATE.foundryTabs[b.id]?.moduleReady && !!STATE.foundryTabs[b.id]?.isGM) -
+      Number(!!STATE.foundryTabs[a.id]?.moduleReady && !!STATE.foundryTabs[a.id]?.isGM) ||
+      Number(!!STATE.foundryTabs[b.id]?.moduleReady) - Number(!!STATE.foundryTabs[a.id]?.moduleReady)
+    );
+  for (const tab of candidates) {
+    try {
+      const response = await chrome.tabs.sendMessage(tab.id, { type: "DDB_ROLL_BRIDGE_WS_ROLL", event });
+      if (!response?.ok) continue;
+      STATE.counters.wsRollsForwarded = (STATE.counters.wsRollsForwarded || 0) + 1;
+      STATE.foundry.lastForwardedAt = Date.now();
+      STATE.foundry.lastForwardedRollId = rollId;
+      return 1;
+    } catch (_) {}
+  }
+  return 0;
+}
+
 async function broadcastRoll(roll) {
   let tabs;
   try {
@@ -205,6 +235,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       lastScanAt: message.status?.lastScanAt || Date.now()
     };
     sendResponse({ ok: true });
+    return true;
+  }
+
+  if (message.type === "DDB_ROLL_BRIDGE_FOUND_WS_ROLL") {
+    const event = message.event;
+    const rollId = event?.data?.rollId;
+    if (event?.eventType !== "dice/roll/fulfilled" || !rollId) {
+      sendResponse({ ok: false, accepted: false, reason: "invalid-ws-roll" });
+      return true;
+    }
+    if (STATE.wsRollIds.has(rollId)) {
+      sendResponse({ ok: true, accepted: false, duplicate: true, routed: false });
+      return true;
+    }
+    STATE.wsRollIds.add(rollId);
+    if (STATE.wsRollIds.size > MAX_SEEN) STATE.wsRollIds.delete(STATE.wsRollIds.values().next().value);
+    broadcastWsRoll(event).then(sent => sendResponse({ ok: true, accepted: true, routed: sent > 0 }))
+      .catch(error => {
+        STATE.counters.foundryErrors++;
+        console.error("[DDB → Foundry Roll Bridge] WebSocket roll routing failed", error);
+        sendResponse({ ok: true, accepted: true, routed: false });
+      });
     return true;
   }
 
