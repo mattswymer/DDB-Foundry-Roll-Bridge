@@ -345,7 +345,7 @@
       throw new Error("D&D Beyond damage event is missing dice notation or result values");
     }
     const sets = notation.set;
-    if (!sets.length || sets.some(s => !/^d\\d+$/i.test(String(s.dieType)))) {
+    if (!sets.length || sets.some(s => !/^d\d+$/i.test(String(s.dieType)))) {
       throw new Error("Unsupported damage dice notation");
     }
     const parts = sets.map(s => {
@@ -356,7 +356,7 @@
     const constant = Number(notation.constant ?? result.constant ?? 0);
     if (!Number.isFinite(constant)) throw new Error("Invalid D&D Beyond damage modifier");
     if (constant !== 0) parts.push(String(constant));
-    const formula = parts.join(" + ").replace(/\\+ -/g, "-");
+    const formula = parts.join(" + ").replace(/\+ -/g, "-");
     const damageType = Array.from(damagePart.types || [])[0];
     if (!damageType) throw new Error("Foundry activity has no configured damage type for this roll");
     const roll = new CONFIG.Dice.DamageRoll(formula, actor.getRollData(), {
