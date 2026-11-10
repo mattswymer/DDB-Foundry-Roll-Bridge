@@ -1,6 +1,6 @@
 (() => {
   const MODULE_ID = "ddb-direct-roll-bridge";
-  const MODULE_VERSION = "1.0.4";
+  const MODULE_VERSION = "1.0.5";
   const seen = new Set();
   const latestAttackContexts = new Map();
   const MAX_SEEN = 300;
@@ -343,8 +343,9 @@
   function findHealingSource(event) {
     const actor = resolveActorForEvent(event);
     const action = String(event.data.action || "").trim().toLowerCase();
-    const items = actor.items.filter(item => item.name?.toLowerCase() === action);
-    if (items.length !== 1) throw new Error(`Expected one item named "${event.data.action}" on ${actor.name}, found ${items.length}`);
+    const normalizeName = name => String(name || "").trim().replace(/\\s*\\(legacy\\)$/i, "").toLowerCase();
+    const items = actor.items.filter(item => normalizeName(item.name) === normalizeName(action));
+    if (items.length !== 1) throw new Error(`Expected one item matching "${event.data.action}" on ${actor.name}, found ${items.length}`);
     const item = items[0];
     const activities = Array.from(item.system.activities?.values?.() || item.system.activities || [])
       .filter(activity => activity.type === "heal" && activity.healing?.formula);
@@ -591,12 +592,19 @@
         native: true, at: Date.now()
       });
       log("Posted native D&D5e roll", {
-        character: result.actor.name, item: result.item.name,
+        character: result.actor?.name || event.data.context?.name || "Unknown",
+        item: result.item?.name || event.data.action || null,
         total: event.data.rolls?.[0]?.result?.total, messageId: result.message?.id
       });
     } catch (error) {
       seen.delete(id);
-      console.error(`${MODULE_ID} | Native WebSocket roll failed`, { id, reason: String(error?.message || error) });
+      console.error(`${MODULE_ID} | Native WebSocket roll failed`, {
+        id,
+        rollType: event?.data?.rolls?.[0]?.rollType || null,
+        action: event?.data?.action || null,
+        reason: String(error?.message || error),
+        stack: error?.stack || null
+      });
       emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
         ok: false, id, reason: String(error?.message || error), native: true, at: Date.now()
       });
