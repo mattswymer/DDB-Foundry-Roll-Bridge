@@ -2,7 +2,7 @@
   "id": "ddb-direct-roll-bridge",
   "title": "DDB Direct Roll Bridge",
   "description": "Mirrors completed D&D Beyond game-log rolls into readable Foundry VTT chat cards using a lightweight browser extension.",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "compatibility": {
     "minimum": "11",
     "verified": "13"
@@ -25,5 +25,5 @@
   "styles": [
     "styles/roll-card.css"
   ],
-  "download": "https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/releases/download/v1.0.2/ddb-direct-roll-bridge.zip"
+  "download": "https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/releases/download/v1.0.3/ddb-direct-roll-bridge.zip"
 }
