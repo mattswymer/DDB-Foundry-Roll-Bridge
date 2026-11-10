@@ -2,6 +2,11 @@
 
 All notable changes to DDB Direct Roll Bridge are documented here.
 
+## [1.0.4] - 2026-11-09
+
+- Suppress legacy DOM cards when a matching native WebSocket attack, check, save, initiative, damage, or healing roll has already been routed.
+- Reconstruct D&D Beyond healing rolls as native D&D5e healing messages using the imported item's Heal activity.
+
 ## [1.0.3] - 2026-11-09
 
 - Relay completed outgoing D&D Beyond WebSocket roll events after the native send succeeds, because the client does not receive an echo of these fulfilled events.
