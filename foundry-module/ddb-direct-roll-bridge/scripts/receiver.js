@@ -1,6 +1,6 @@
 (() => {
   const MODULE_ID = "ddb-direct-roll-bridge";
-  const MODULE_VERSION = "1.0.3";
+  const MODULE_VERSION = "1.0.4";
   const seen = new Set();
   const latestAttackContexts = new Map();
   const MAX_SEEN = 300;
