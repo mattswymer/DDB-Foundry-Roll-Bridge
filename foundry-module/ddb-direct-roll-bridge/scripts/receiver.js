@@ -340,7 +340,21 @@
     return { actor, item, activity: activities[0] };
   }
 
-  function buildNativeDamageRoll(event, actor, damagePart, source) {
+  function findHealingSource(event) {
+    const actor = resolveActorForEvent(event);
+    const action = String(event.data.action || "").trim().toLowerCase();
+    const items = actor.items.filter(item => item.name?.toLowerCase() === action);
+    if (items.length !== 1) throw new Error(`Expected one item named "${event.data.action}" on ${actor.name}, found ${items.length}`);
+    const item = items[0];
+    const activities = Array.from(item.system.activities?.values?.() || item.system.activities || [])
+      .filter(activity => activity.type === "heal" && activity.healing?.formula);
+    if (activities.length !== 1) {
+      throw new Error(`Expected one healing activity on ${item.name}, found ${activities.length}`);
+    }
+    return { actor, item, activity: activities[0] };
+  }
+
+  function buildNativeDamageRoll(event, actor, damagePart, source, defaultType = null) {
     const notation = source?.diceNotation;
     const result = source?.result;
     if (!notation || !Array.isArray(notation.set) || !result || !Array.isArray(result.values)) {
@@ -359,7 +373,7 @@
     if (!Number.isFinite(constant)) throw new Error("Invalid D&D Beyond damage modifier");
     if (constant !== 0) parts.push(String(constant));
     const formula = parts.join(" + ").replace(/\+ -/g, "-");
-    const damageType = Array.from(damagePart.types || [])[0];
+    const damageType = Array.from(damagePart.types || [])[0] || defaultType;
     if (!damageType) throw new Error("Foundry activity has no configured damage type for this roll");
     const roll = new CONFIG.Dice.DamageRoll(formula, actor.getRollData(), {
       type: damageType,
@@ -432,6 +446,44 @@
     return { message, usageMessage, actor, item };
   }
 
+  async function postNativeHealing(event) {
+    if (!game.user?.isGM) throw new Error("The Foundry session receiving rolls must be a GM");
+    const { actor, item, activity } = findHealingSource(event);
+    const usage = await activity.use(
+      { consume: false, subsequentActions: false },
+      { configure: false }
+    );
+    const usageMessage = usage?.message;
+    if (!usageMessage) throw new Error("Foundry did not create a native healing activity usage card");
+
+    const sources = event.data.rolls || [];
+    if (!sources.length) throw new Error("D&D Beyond healing event contains no rolls");
+    const healingPart = activity.healing;
+    const rolls = sources.map(source => buildNativeDamageRoll(event, actor, healingPart, source, "healing"));
+    const system = {
+      ...(usageMessage.system?.toObject?.() || usageMessage.system || {}),
+      origin: usageMessage.id
+    };
+    const messageData = {
+      speaker: ChatMessage.getSpeaker({ actor }),
+      flavor: `${item.name} - Healing Roll`,
+      type: "healing",
+      system,
+      flags: {
+        [MODULE_ID]: {
+          ddbRollId: event.data.rollId,
+          source: "ddb-websocket",
+          characterId: event.entityId || event.data.context?.entityId || null
+        }
+      }
+    };
+    if (event.messageScope === "userId" || event.data.context?.messageScope === "userId") {
+      messageData.whisper = ChatMessage.getWhisperRecipients("GM").map(user => user.id);
+    }
+    const message = await CONFIG.Dice.DamageRoll.toMessage(rolls, messageData, { create: true });
+    return { message, usageMessage, actor, item };
+  }
+
   async function postNativeEvent(event) {
     const source = event?.data?.rolls?.[0];
     const type = String(source?.rollType || "").toLowerCase();
@@ -439,6 +491,7 @@
     if (type === "check") return postNativeCheckOrSave(event, "check");
     if (type === "save") return postNativeCheckOrSave(event, "save");
     if (type === "damage") return postNativeDamage(event);
+    if (type === "heal") return postNativeHealing(event);
     if (type === "roll" && /initiative/i.test(String(event.data.action || ""))) {
       return postNativeInitiative(event);
     }
@@ -537,7 +590,7 @@
         usageMessageId: result.usageMessage?.id || null,
         native: true, at: Date.now()
       });
-      log("Posted native D&D5e attack", {
+      log("Posted native D&D5e roll", {
         character: result.actor.name, item: result.item.name,
         total: event.data.rolls?.[0]?.result?.total, messageId: result.message?.id
       });
