@@ -4,6 +4,11 @@ All notable changes to DDB Direct Roll Bridge are documented here.
 
 ## [1.0.3] - 2026-11-09
 
+- Relay completed outgoing D&D Beyond WebSocket roll events after the native send succeeds, because the client does not receive an echo of these fulfilled events.
+- Continue ignoring deferred rolls and deduplicating fulfilled events by roll ID.
+
+## [1.0.3] - 2026-11-09
+
 - Reconstruct D&D Beyond attack, ability-check, saving-throw, initiative, and damage rolls as native D&D5e chat messages.
 - Update a matching combatant's initiative when an initiative roll can be mapped unambiguously.
 - Preserve the selected attack targets on native damage cards so D&D5e's Apply Damage workflow can be used.
