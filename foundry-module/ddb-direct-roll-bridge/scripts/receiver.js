@@ -119,9 +119,20 @@
     const ability = activity.attack?.ability && activity.attack.ability !== "none"
       ? activity.attack.ability
       : activity._getAbilityOptions?.()[0]?.value;
+    const item = activity.item;
+    const last = item.getFlag("dnd5e", `last.${activity.id}`) || {};
+    const attackModes = item.system.attackModes || [];
+    const ammunitionOptions = item.system.ammunitionOptions || [];
+    const masteryOptions = item.system.masteryOptions || [];
+    const attackMode = attackModes.some(option => option.value === last.attackMode)
+      ? last.attackMode : attackModes[0]?.value;
+    const ammunition = ammunitionOptions.some(option => option.value === last.ammunition)
+      ? last.ammunition : ammunitionOptions[0]?.value;
+    const mastery = masteryOptions.some(option => option.value === last.mastery)
+      ? last.mastery : masteryOptions[0]?.value;
     const options = {
       target: Number.isFinite(target) ? target : undefined,
-      ability,
+      ability, ammunition, attackMode, mastery,
       criticalSuccess: activity.criticalThreshold,
       criticalFailure: 1,
       rollType: "attack",
