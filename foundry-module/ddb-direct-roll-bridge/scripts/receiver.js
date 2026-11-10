@@ -227,7 +227,7 @@
     const constant = Number(notation.constant ?? result.constant ?? 0);
     if (!Number.isFinite(constant)) throw new Error("Invalid D&D Beyond roll modifier");
     if (constant !== 0) parts.push(String(constant));
-    const formula = parts.join(" + ").replace(/\\+ -/g, "-");
+    const formula = parts.join(" + ").replace(/\+ -/g, "-");
     const rollOptions = {
       ability,
       target: undefined,
