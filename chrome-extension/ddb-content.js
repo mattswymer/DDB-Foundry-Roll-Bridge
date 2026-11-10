@@ -373,8 +373,26 @@
     }
   }
 
+  const recentWebSocketAttacks = [];
+
+  function isCoveredByWebSocketAttack(roll) {
+    const now = Date.now();
+    while (recentWebSocketAttacks.length && now - recentWebSocketAttacks[0].at > 3000) recentWebSocketAttacks.shift();
+    const character = cleanText(roll.character).toLowerCase();
+    const title = cleanText(`${roll.title || ""} ${roll.rawText || ""}`).toLowerCase();
+    return recentWebSocketAttacks.some(entry =>
+      entry.total === Number(roll.total) &&
+      (!entry.character || !character || entry.character === character) &&
+      title.includes(entry.action)
+    );
+  }
+
   function submitRoll(roll, root) {
     if (extensionContextInvalid || !roll?.id || seen.has(roll.id)) return;
+    if (isCoveredByWebSocketAttack(roll)) {
+      debug("Suppressed DOM duplicate of a WebSocket attack", { title: roll.title, total: roll.total });
+      return;
+    }
 
     const signature = rollSignature(roll);
     const now = Date.now();
@@ -551,6 +569,16 @@
     if (payload?.eventType !== "dice/roll/fulfilled" || !rollId || seenWebSocketRollIds.has(rollId)) return;
     seenWebSocketRollIds.add(rollId);
     if (seenWebSocketRollIds.size > 300) seenWebSocketRollIds.delete(seenWebSocketRollIds.values().next().value);
+    const firstRoll = payload.data?.rolls?.[0];
+    if (String(firstRoll?.rollType || "").toLowerCase() === "to hit") {
+      recentWebSocketAttacks.push({
+        at: Date.now(),
+        action: cleanText(payload.data?.action).toLowerCase(),
+        character: cleanText(payload.data?.context?.name).toLowerCase(),
+        total: Number(firstRoll?.result?.total)
+      });
+      if (recentWebSocketAttacks.length > 20) recentWebSocketAttacks.shift();
+    }
     sendRuntimeMessage({ type: "DDB_ROLL_BRIDGE_FOUND_WS_ROLL", event: payload }, response => {
       if (response?.accepted) log("Forwarded WebSocket roll", { rollId, routed: !!response.routed });
     });
