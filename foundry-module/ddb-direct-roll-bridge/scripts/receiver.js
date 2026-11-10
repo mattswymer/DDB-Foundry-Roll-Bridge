@@ -68,6 +68,78 @@
     return true;
   }
 
+  function findExistingMessage(id) {
+    if (!id || !game.messages) return null;
+    return game.messages.find(message => message.getFlag?.(MODULE_ID, "ddbRollId") === id) || null;
+  }
+
+  function isNativeRollEvent(event) {
+    const source = event?.data?.rolls?.[0];
+    const type = String(source?.rollType || "").toLowerCase();
+    return ["to hit", "check", "save", "damage", "heal"].includes(type) ||
+      (type === "roll" && /initiative/i.test(String(event?.data?.action || "")));
+  }
+
+  function buildFallbackRoll(event, reason) {
+    const data = event?.data || {};
+    const source = data.rolls?.[0] || {};
+    const result = source.result || {};
+    const notation = source.diceNotation || {};
+    const sets = Array.isArray(notation.set) ? notation.set : [];
+    const values = Array.isArray(result.values) ? result.values : [];
+    const formulaParts = sets.map(set => {
+      const count = Number(set.count || set.dice?.length || 0);
+      const dieType = String(set.dieType || "die").toLowerCase();
+      return count > 0 ? `${count}${dieType}` : dieType;
+    });
+    const constant = Number(notation.constant ?? result.constant ?? 0);
+    if (Number.isFinite(constant) && constant !== 0) formulaParts.push(String(constant));
+    const formula = formulaParts.join(" + ").replace(/\\+ -/g, "-");
+    const character = String(data.context?.name || "D&D Beyond").trim();
+    const action = String(data.action || "Roll").trim();
+    const rollType = String(source.rollType || "roll").trim();
+    const diceSummary = values.length
+      ? values.map((value, index) => {
+          const dieType = sets.length === 1 ? String(sets[0].dieType || "die") : "die";
+          return `${dieType} ${Number(value)}`;
+        }).join(", ")
+      : "";
+    return {
+      character,
+      title: `${action} — ${rollType} (Fallback)`,
+      formula,
+      diceSummary,
+      dice: sets.map(set => ({ count: Number(set.count || set.dice?.length || 0) })),
+      total: Number.isFinite(Number(result.total)) ? Number(result.total) : null,
+      rawText: `Native Foundry processing failed: ${String(reason || "unknown error")}`
+    };
+  }
+
+  async function postFallbackCard(event, reason) {
+    const id = event?.data?.rollId;
+    if (!id) throw new Error("Cannot create fallback without a D&D Beyond roll ID");
+    const roll = buildFallbackRoll(event, reason);
+    const messageData = {
+      speaker: getSpeaker(roll.character),
+      content: buildContent(roll),
+      flags: {
+        [MODULE_ID]: {
+          ddbRollId: id,
+          source: "ddb-websocket-fallback",
+          fallback: true,
+          failureReason: String(reason || "Native processing failed").slice(0, 500),
+          characterId: event.entityId || event.data?.context?.entityId || null
+        }
+      }
+    };
+    if (event.messageScope === "userId" || event.data?.context?.messageScope === "userId") {
+      messageData.whisper = ChatMessage.getWhisperRecipients("GM").map(user => user.id);
+    }
+    const message = await ChatMessage.create(messageData);
+    if (!message?.id) throw new Error("Foundry did not return a message for the fallback card");
+    return message;
+  }
+
   function findAttackSource(event) {
     const data = event?.data;
     const name = String(data?.context?.name || "").trim();
@@ -578,35 +650,83 @@
 
   async function handleWebSocketRoll(event) {
     const id = event?.data?.rollId || null;
-    if (!id) throw new Error("WebSocket event is missing rollId");
-    if (seen.has(id)) {
-      emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", { ok: true, duplicate: true, id, at: Date.now() });
-      return;
-    }
-    remember(id);
+    let remembered = false;
     try {
+      if (!id) throw new Error("WebSocket event is missing rollId");
+
+      const existing = findExistingMessage(id);
+      if (existing) {
+        remember(id);
+        emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
+          ok: true, id, duplicate: true, messageId: existing.id, native: true, at: Date.now()
+        });
+        return;
+      }
+      if (seen.has(id)) {
+        emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", { ok: true, duplicate: true, id, at: Date.now() });
+        return;
+      }
+      remembered = remember(id);
+
       const result = await postNativeEvent(event);
+      if (!result?.message?.id) throw new Error("Native roll processing returned without creating a chat message");
+
       emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
-        ok: true, id, messageId: result.message?.id || null,
+        ok: true, id, messageId: result.message.id,
         usageMessageId: result.usageMessage?.id || null,
         native: true, at: Date.now()
       });
       log("Posted native D&D5e roll", {
         character: result.actor?.name || event.data.context?.name || "Unknown",
         item: result.item?.name || event.data.action || null,
-        total: event.data.rolls?.[0]?.result?.total, messageId: result.message?.id
+        total: event.data.rolls?.[0]?.result?.total, messageId: result.message.id
       });
     } catch (error) {
-      seen.delete(id);
+      const reason = String(error?.message || error);
       console.error(`${MODULE_ID} | Native WebSocket roll failed`, {
         id,
         rollType: event?.data?.rolls?.[0]?.rollType || null,
         action: event?.data?.action || null,
-        reason: String(error?.message || error),
+        reason,
         stack: error?.stack || null
       });
+
+      // Initiative can create its roll card successfully and then fail while
+      // updating the tracker. Do not add a second card when the roll already exists.
+      const existing = id ? findExistingMessage(id) : null;
+      if (existing) {
+        remember(id);
+        emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
+          ok: true, id, messageId: existing.id, native: true,
+          partialNative: true, reason, at: Date.now()
+        });
+        return;
+      }
+
+      if (isNativeRollEvent(event)) {
+        try {
+          const fallback = await postFallbackCard(event, reason);
+          remember(id);
+          emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
+            ok: true, id, messageId: fallback.id, fallback: true, reason, at: Date.now()
+          });
+          log("Posted fallback D&D Beyond roll", { id, messageId: fallback.id, reason });
+          return;
+        } catch (fallbackError) {
+          console.error(`${MODULE_ID} | Fallback WebSocket card failed`, fallbackError);
+          if (id) seen.delete(id);
+          emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
+            ok: false, id, reason,
+            fallbackError: String(fallbackError?.message || fallbackError),
+            native: true, at: Date.now()
+          });
+          return;
+        }
+      }
+
+      if (id && remembered) seen.delete(id);
       emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
-        ok: false, id, reason: String(error?.message || error), native: true, at: Date.now()
+        ok: false, id, reason, native: true, at: Date.now()
       });
     }
   }
@@ -637,7 +757,13 @@
         emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", { ok: false, reason: "bad-ws-event-detail", at: Date.now() });
         return;
       }
-      handleWebSocketRoll(payload);
+      handleWebSocketRoll(payload).catch(error => {
+        console.error(`${MODULE_ID} | Unhandled WebSocket receiver error`, error);
+        emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
+          ok: false, id: payload?.data?.rollId || null,
+          reason: String(error?.message || error), native: true, at: Date.now()
+        });
+      });
     });
 
     emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_MODULE_READY", {
