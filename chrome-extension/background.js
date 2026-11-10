@@ -257,12 +257,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       STATE.wsRollIds.delete(oldestId);
       wsRollSourceTabs.delete(oldestId);
     }
-    broadcastWsRoll(event).then(sent => sendResponse({ ok: true, accepted: true, routed: sent > 0 }))
-      .catch(error => {
-        STATE.counters.foundryErrors++;
-        console.error("[DDB → Foundry Roll Bridge] WebSocket roll routing failed", error);
-        sendResponse({ ok: true, accepted: true, routed: false });
-      });
+    broadcastWsRoll(event).then(sent => {
+      if (sent <= 0) wsRollSourceTabs.delete(rollId);
+      sendResponse({ ok: true, accepted: true, routed: sent > 0 });
+    }).catch(error => {
+      wsRollSourceTabs.delete(rollId);
+      STATE.counters.foundryErrors++;
+      console.error("[DDB → Foundry Roll Bridge] WebSocket roll routing failed", error);
+      sendResponse({ ok: true, accepted: true, routed: false });
+    });
     return true;
   }
 
