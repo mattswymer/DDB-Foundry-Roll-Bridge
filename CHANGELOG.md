@@ -2,6 +2,12 @@
 
 All notable changes to DDB Direct Roll Bridge are documented here.
 
+## [1.0.5] - 2026-11-09
+
+- Match D&D Beyond healing spell names to imported Foundry items with a trailing `(Legacy)` suffix.
+- Fix native check, save, and initiative success logging when those roll types do not return an item.
+- Include roll type, action, and stack trace in native roll failure diagnostics.
+
 ## [1.0.4] - 2026-11-09
 
 - Suppress legacy DOM cards when a matching native WebSocket attack, check, save, initiative, damage, or healing roll has already been routed.
