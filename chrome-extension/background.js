@@ -254,6 +254,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (sender?.tab?.id != null) existingState.sourceTabIds.add(sender.tab.id);
         existingState.responders.push(sendResponse);
       } else {
+        // A duplicate arriving after tab delivery but before the Foundry ACK
+        // still needs to receive a later failure notification if processing fails.
+        if (existingState.status === "routed" && sender?.tab?.id != null) {
+          existingState.sourceTabIds.add(sender.tab.id);
+        }
         sendResponse({
           ok: true,
           accepted: true,
