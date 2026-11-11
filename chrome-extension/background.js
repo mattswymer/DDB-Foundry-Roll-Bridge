@@ -258,6 +258,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // still needs to receive a later failure notification if processing fails.
         if (existingState.status === "routed" && sender?.tab?.id != null) {
           existingState.sourceTabIds.add(sender.tab.id);
+        } else if (existingState.status === "delivered" && sender?.tab?.id != null) {
+          chrome.tabs.sendMessage(sender.tab.id, {
+            type: "DDB_ROLL_BRIDGE_WS_ACK",
+            ack: { id: rollId, ok: true, duplicate: true }
+          }).catch(() => {});
         }
         sendResponse({
           ok: true,
@@ -401,19 +406,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     STATE.counters.foundryAcks++;
     if (ack && ack.ok === false) STATE.counters.foundryErrors++;
 
-    // A failed Foundry ACK is routed back to the D&D Beyond tab that supplied
-    // the roll, allowing its legacy DOM scraper to submit the visible card.
+    // Relay the final Foundry disposition (success or failure) to every DDB tab
+    // that observed this roll. The DDB coordinator must not treat "routed" as delivered.
     const routingState = ack?.id ? STATE.wsRollStates.get(ack.id) : null;
-    if (routingState && ack?.ok === false) {
-      routingState.status = "failed";
+    if (routingState && (ack?.ok === false || ack?.ok === true)) {
+      routingState.status = ack.ok === true ? "delivered" : "failed";
       for (const sourceTabId of routingState.sourceTabIds) {
         chrome.tabs.sendMessage(sourceTabId, {
           type: "DDB_ROLL_BRIDGE_WS_ACK", ack
         }).catch(() => {});
       }
-      routingState.sourceTabIds.clear();
-    } else if (routingState && ack?.ok === true) {
-      routingState.status = "delivered";
       routingState.sourceTabIds.clear();
     }
     sendResponse({ ok: true });

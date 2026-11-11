@@ -12,6 +12,13 @@
   let extensionContextInvalid = false;
   let statusInterval = null;
   let observer = null;
+  let hookHealthInterval = null;
+  let lastHookPongAt = 0;
+  let lastHookPingNonce = null;
+  let hookPingSequence = 0;
+  const pendingCoordinatorRoots = new Map();
+  const HOOK_HEALTH_MS = 4000;
+  const HOOK_STALE_MS = 12000;
   // A resolved card must keep the same parsed result for this long before it is sent.
   // This is a per-card stability check (it only protects half-rendered cards), not a
   // global delay. It is skipped while the tab is hidden, where timers get throttled.
@@ -45,6 +52,7 @@
     try { observer?.disconnect(); } catch (_) {}
     if (statusInterval !== null) clearInterval(statusInterval);
     if (sweepInterval !== null) clearInterval(sweepInterval);
+    if (hookHealthInterval !== null) clearInterval(hookHealthInterval);
     for (const card of cards.values()) clearTimeout(card.timer);
     cards.clear();
     dirtyRoots.clear();
@@ -373,30 +381,49 @@
     }
   }
 
-  const recentWebSocketRolls = [];
+  function matchesWebSocketToDom(wsRoll, domRoll) {
+    const character = cleanText(domRoll.character).toLowerCase();
+    const title = cleanText(`${domRoll.title || ""} ${domRoll.rawText || ""}`).toLowerCase();
+    return wsRoll.total === Number(domRoll.total) &&
+      (!wsRoll.character || !character || wsRoll.character === character) &&
+      ((!!wsRoll.action && title.includes(wsRoll.action)) ||
+        (wsRoll.rollType === "roll" && /initiative/i.test(title)));
+  }
 
-  function isCoveredByWebSocketRoll(roll) {
-    const now = Date.now();
-    while (recentWebSocketRolls.length && now - recentWebSocketRolls[0].at > 3000) recentWebSocketRolls.shift();
-    const character = cleanText(roll.character).toLowerCase();
-    const title = cleanText(`${roll.title || ""} ${roll.rawText || ""}`).toLowerCase();
-    return recentWebSocketRolls.some(entry =>
-      entry.total === Number(roll.total) &&
-      (!entry.character || !character || entry.character === character) &&
-      (
-        (!!entry.action && title.includes(entry.action)) ||
-        (entry.rollType === "roll" && /initiative/i.test(title))
-      )
-    );
+  const coordinator = new DDBRollCoordinator.RollCoordinator({
+    matches: matchesWebSocketToDom,
+    graceMs: 1000,
+    ackTimeoutMs: 15000,
+    retentionMs: 30000,
+    onSubmitDom(roll, meta) {
+      const root = pendingCoordinatorRoots.get(meta.cardId);
+      pendingCoordinatorRoots.delete(meta.cardId);
+      if (!root || extensionContextInvalid) return;
+      processedElements.add(root);
+      debug("Submitting DOM roll after coordinator disposition", { title: roll.title, reason: meta.reason });
+      submitRoll(roll, root);
+    },
+    onSuppressDom(roll, meta) {
+      const root = pendingCoordinatorRoots.get(meta.cardId);
+      pendingCoordinatorRoots.delete(meta.cardId);
+      if (root) processedElements.add(root);
+      debug("Suppressed DOM card after confirmed WebSocket delivery", { title: roll.title, wsId: meta.wsId });
+    }
+  });
+
+  function pingWebSocketHook() {
+    if (extensionContextInvalid) return;
+    lastHookPingNonce = `ddb-bridge-${Date.now()}-${++hookPingSequence}`;
+    window.postMessage({
+      source: "ddb-foundry-roll-bridge",
+      type: "DDB_WS_HEALTH_PING",
+      nonce: lastHookPingNonce
+    }, location.origin);
+    if (Date.now() - lastHookPongAt > HOOK_STALE_MS) coordinator.setHookHealthy(false);
   }
 
   function submitRoll(roll, root) {
     if (extensionContextInvalid || !roll?.id || seen.has(roll.id)) return;
-    if (isCoveredByWebSocketRoll(roll)) {
-      debug("Suppressed DOM duplicate of a native WebSocket roll", { title: roll.title, total: roll.total });
-      return;
-    }
-
     const signature = rollSignature(roll);
     const now = Date.now();
     if (consumeTwinCredit(signature, root, now)) {
@@ -452,8 +479,14 @@
     }
 
     cards.delete(key);
-    processedElements.add(root);
-    submitRoll(roll, root);
+    if (pendingCoordinatorRoots.has(key)) return;
+    pendingCoordinatorRoots.set(key, root);
+    const decision = coordinator.addDom(key, roll);
+    if (decision.action === "duplicate-dom") {
+      pendingCoordinatorRoots.delete(key);
+      processedElements.add(root);
+      debug("Ignored duplicate DOM card coordinator entry", { title: roll.title });
+    }
   }
 
   function flushDirty() {
@@ -477,6 +510,7 @@
   // Backstop only: expires cards that never resolved and re-checks waiting cards in case
   // a change was missed. It is not on the path of normal rolls.
   function sweepCards() {
+    coordinator.tick();
     const now = Date.now();
     for (const [key, card] of Array.from(cards)) {
       if (!card.root.isConnected || now - card.firstSeenAt > MAX_PENDING_AGE_MS) {
@@ -566,7 +600,15 @@
   window.addEventListener("message", event => {
     if (extensionContextInvalid || event.source !== window || event.origin !== location.origin) return;
     const message = event.data;
-    if (message?.source !== "ddb-foundry-roll-bridge" || message.type !== "DDB_WS_ROLL") return;
+    if (message?.source !== "ddb-foundry-roll-bridge") return;
+    if (message.type === "DDB_WS_HEALTH_PONG") {
+      if (typeof message.nonce === "string" && message.nonce === lastHookPingNonce) {
+        lastHookPongAt = Date.now();
+        coordinator.setHookHealthy(message.healthy === true);
+      }
+      return;
+    }
+    if (message.type !== "DDB_WS_ROLL") return;
     const payload = message.payload;
     const rollId = payload?.data?.rollId;
     if (payload?.eventType !== "dice/roll/fulfilled" || !rollId || seenWebSocketRollIds.has(rollId)) return;
@@ -577,44 +619,41 @@
     const isNativeType = ["to hit", "check", "save", "damage", "heal"].includes(rollType) ||
       (rollType === "roll" && /initiative/i.test(String(payload.data?.action || "")));
 
-    // Claim DOM coverage immediately, before asynchronous extension routing.
-    // The DDB game-log card can appear before the background/Foundry ACK returns.
     if (isNativeType) {
-      recentWebSocketRolls.push({
-        at: Date.now(),
-        rollId,
-        rollType,
-        action: cleanText(payload.data?.action).toLowerCase(),
+      const wsMatch = {
+        total: Number(firstRoll?.result?.total),
         character: cleanText(payload.data?.context?.name).toLowerCase(),
-        total: Number(firstRoll?.result?.total)
-      });
-      if (recentWebSocketRolls.length > 30) recentWebSocketRolls.shift();
+        action: cleanText(payload.data?.action).toLowerCase(),
+        rollType
+      };
+      const decision = coordinator.addWebSocket(rollId, wsMatch);
+      if (decision.action === "suppress-websocket") {
+        log("Suppressed late WebSocket duplicate because its DOM fallback was already submitted", { rollId, domId: decision.domId });
+        return;
+      }
     }
 
-    sendRuntimeMessage({ type: "DDB_ROLL_BRIDGE_FOUND_WS_ROLL", event: payload }, response => {
+    const sent = sendRuntimeMessage({ type: "DDB_ROLL_BRIDGE_FOUND_WS_ROLL", event: payload }, response => {
+      if (isNativeType && (!response?.accepted || !response?.routed)) {
+        coordinator.acknowledge(rollId, false, { reason: response?.reason || "no Foundry destination" });
+      }
       if (response?.accepted && response?.routed) {
-        log("Forwarded WebSocket roll", { rollId, routed: true });
+        log("Forwarded WebSocket roll to Foundry", { rollId, routed: true });
       } else {
-        // No WebSocket delivery means the legacy DOM scraper must remain available.
-        const index = recentWebSocketRolls.findIndex(entry => entry.rollId === rollId);
-        if (index !== -1) recentWebSocketRolls.splice(index, 1);
         log("WebSocket roll was not routed to Foundry", { rollId, reason: response?.reason || "no Foundry destination" });
       }
     });
+    if (!sent && isNativeType) coordinator.acknowledge(rollId, false, { reason: "extension-message-failed" });
   });
 
-  // If Foundry rejects a queued/forwarded WebSocket roll, release its
-  // temporary DOM-suppression claim so the legacy card can be submitted.
+  // Foundry sends a final ACK only after the receiver has created (or failed to create)
+  // the native chat message. Routing acceptance alone is not delivery.
   chrome.runtime.onMessage.addListener(message => {
     if (message?.type !== "DDB_ROLL_BRIDGE_WS_ACK") return;
     const ack = message.ack || {};
-    if (ack.ok === false && ack.id) {
-      const index = recentWebSocketRolls.findIndex(entry => entry.rollId === ack.id);
-      if (index !== -1) recentWebSocketRolls.splice(index, 1);
-      log("Released DOM coverage after Foundry rejected WebSocket roll", {
-        rollId: ack.id, reason: ack.reason || "unknown"
-      });
-    }
+    if (!ack.id) return;
+    const result = coordinator.acknowledge(ack.id, ack.ok === true, { reason: ack.reason || null });
+    log("Received final Foundry acknowledgment", { rollId: ack.id, ok: ack.ok === true, result });
   });
 
   function start() {
@@ -628,6 +667,8 @@
       attributeFilter: ["class", "data-roll-total", "data-roll", "data-character-name", "aria-label"]
     });
     sendStatus();
+    pingWebSocketHook();
+    hookHealthInterval = setInterval(pingWebSocketHook, HOOK_HEALTH_MS);
     sweepInterval = setInterval(sweepCards, SWEEP_MS);
     statusInterval = setInterval(() => {
       if (extensionContextInvalid) {

@@ -31,6 +31,27 @@
 
   const publishedRollIds = new Set();
 
+  const CapturedWebSocket = new Proxy(NativeWebSocket, {
+    construct(target, args, newTarget) {
+      const socket = Reflect.construct(target, args, newTarget);
+      return instrumentSocket(socket, args);
+    }
+  });
+
+  window.addEventListener("message", event => {
+    if (event.source !== window || event.origin !== window.location.origin) return;
+    const message = event.data;
+    if (message?.source !== "ddb-foundry-roll-bridge" ||
+        message.type !== "DDB_WS_HEALTH_PING" ||
+        typeof message.nonce !== "string") return;
+    window.postMessage({
+      source: "ddb-foundry-roll-bridge",
+      type: "DDB_WS_HEALTH_PONG",
+      nonce: message.nonce,
+      healthy: window.WebSocket === CapturedWebSocket && window.__ddbWebSocketCaptureInstalled === true
+    }, window.location.origin);
+  });
+
   function publishFulfilledRoll(payload, direction) {
     if (payload?.eventType !== "dice/roll/fulfilled") return;
     const rollId = payload.data?.rollId;
@@ -185,12 +206,7 @@
     return socket;
   }
 
-  window.WebSocket = new Proxy(NativeWebSocket, {
-    construct(target, args, newTarget) {
-      const socket = Reflect.construct(target, args, newTarget);
-      return instrumentSocket(socket, args);
-    }
-  });
+  window.WebSocket = CapturedWebSocket;
 
   console.info("[DDB Roll Capture] WebSocket capture hook installed");
 })();

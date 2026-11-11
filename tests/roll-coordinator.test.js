@@ -2,12 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { RollCoordinator } = require('../chrome-extension/roll-coordinator.js');
 
-function setup({ healthy = true, graceMs = 1000, retentionMs = 3000 } = {}) {
+function setup({ healthy = true, graceMs = 1000, ackTimeoutMs = 15000, retentionMs = 30000 } = {}) {
   let time = 0;
   const submitted = [], suppressed = [];
   const matches = (a, b) => a.total === b.total && a.character === b.character && a.action === b.action;
   const coordinator = new RollCoordinator({
-    matches, now: () => time, graceMs, retentionMs,
+    matches, now: () => time, graceMs, ackTimeoutMs, retentionMs,
     onSubmitDom: (roll, meta) => submitted.push({ roll, ...meta }),
     onSuppressDom: (roll, meta) => suppressed.push({ roll, ...meta })
   });
