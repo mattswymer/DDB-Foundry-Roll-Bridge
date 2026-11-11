@@ -1,7 +1,7 @@
 const STATE = {
   recentRolls: [],
   lastRollIds: new Set(),
-  wsRollIds: new Set(),
+  wsRollStates: new Map(),
   ddb: {
     detected: false,
     url: null,
@@ -48,7 +48,6 @@ const FOUNDRY_URL_PATTERNS = [
   "https://127.0.0.1/*"
 ];
 const recentRollSignatures = new Map();
-const wsRollSourceTabs = new Map();
 
 function normalizeRollPart(value) {
   return String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -246,25 +245,60 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: false, accepted: false, reason: "invalid-ws-roll" });
       return true;
     }
-    if (STATE.wsRollIds.has(rollId)) {
-      sendResponse({ ok: true, accepted: false, duplicate: true, routed: false });
+    const existingState = STATE.wsRollStates.get(rollId);
+    if (existingState) {
+      // A second DDB tab may observe the same shared game-log event. It must
+      // inherit the first tab's eventual routing result, not interpret the
+      // in-flight duplicate as a failed route and submit a DOM fallback.
+      if (existingState.status === "pending") {
+        if (sender?.tab?.id != null) existingState.sourceTabIds.add(sender.tab.id);
+        existingState.responders.push(sendResponse);
+      } else {
+        sendResponse({
+          ok: true,
+          accepted: true,
+          duplicate: true,
+          routed: existingState.status === "routed" || existingState.status === "delivered"
+        });
+      }
       return true;
     }
-    STATE.wsRollIds.add(rollId);
-    if (sender?.tab?.id != null) wsRollSourceTabs.set(rollId, sender.tab.id);
-    if (STATE.wsRollIds.size > MAX_SEEN) {
-      const oldestId = STATE.wsRollIds.values().next().value;
-      STATE.wsRollIds.delete(oldestId);
-      wsRollSourceTabs.delete(oldestId);
+
+    const routingState = {
+      status: "pending",
+      sourceTabIds: new Set(sender?.tab?.id != null ? [sender.tab.id] : []),
+      responders: [sendResponse],
+      createdAt: Date.now()
+    };
+    STATE.wsRollStates.set(rollId, routingState);
+    while (STATE.wsRollStates.size > MAX_SEEN) {
+      const oldestId = STATE.wsRollStates.keys().next().value;
+      STATE.wsRollStates.delete(oldestId);
     }
+
     broadcastWsRoll(event).then(sent => {
-      if (sent <= 0) wsRollSourceTabs.delete(rollId);
-      sendResponse({ ok: true, accepted: true, routed: sent > 0 });
+      // A Foundry failure ACK can arrive before this tab-routing promise settles.
+      // Never overwrite a more definitive delivered/failed state with this result.
+      if (routingState.status === "pending") {
+        routingState.status = sent > 0 ? "routed" : "failed";
+      }
+      if (sent <= 0) routingState.sourceTabIds.clear();
+      const response = {
+        ok: true,
+        accepted: true,
+        routed: routingState.status === "routed" || routingState.status === "delivered"
+      };
+      for (const respond of routingState.responders.splice(0)) {
+        try { respond(response); } catch (_) {}
+      }
     }).catch(error => {
-      wsRollSourceTabs.delete(rollId);
+      if (routingState.status === "pending") routingState.status = "failed";
+      routingState.sourceTabIds.clear();
       STATE.counters.foundryErrors++;
       console.error("[DDB → Foundry Roll Bridge] WebSocket roll routing failed", error);
-      sendResponse({ ok: true, accepted: true, routed: false });
+      for (const respond of routingState.responders.splice(0)) {
+        try { respond({ ok: true, accepted: true, routed: false }); } catch (_) {}
+      }
     });
     return true;
   }
@@ -364,14 +398,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     // A failed Foundry ACK is routed back to the D&D Beyond tab that supplied
     // the roll, allowing its legacy DOM scraper to submit the visible card.
-    const sourceTabId = ack?.id ? wsRollSourceTabs.get(ack.id) : null;
-    if (ack?.id) wsRollSourceTabs.delete(ack.id);
-    if (ack?.ok === false && sourceTabId != null) {
-      chrome.tabs.sendMessage(sourceTabId, {
-        type: "DDB_ROLL_BRIDGE_WS_ACK", ack
-      }).catch(() => {});
-    } else if (ack?.ok === true && ack?.id) {
-      wsRollSourceTabs.delete(ack.id);
+    const routingState = ack?.id ? STATE.wsRollStates.get(ack.id) : null;
+    if (routingState && ack?.ok === false) {
+      routingState.status = "failed";
+      for (const sourceTabId of routingState.sourceTabIds) {
+        chrome.tabs.sendMessage(sourceTabId, {
+          type: "DDB_ROLL_BRIDGE_WS_ACK", ack
+        }).catch(() => {});
+      }
+      routingState.sourceTabIds.clear();
+    } else if (routingState && ack?.ok === true) {
+      routingState.status = "delivered";
+      routingState.sourceTabIds.clear();
     }
     sendResponse({ ok: true });
     return true;
