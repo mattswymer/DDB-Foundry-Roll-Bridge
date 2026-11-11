@@ -573,24 +573,31 @@
     seenWebSocketRollIds.add(rollId);
     if (seenWebSocketRollIds.size > 300) seenWebSocketRollIds.delete(seenWebSocketRollIds.values().next().value);
     const firstRoll = payload.data?.rolls?.[0];
+    const rollType = String(firstRoll?.rollType || "").toLowerCase();
+    const isNativeType = ["to hit", "check", "save", "damage", "heal"].includes(rollType) ||
+      (rollType === "roll" && /initiative/i.test(String(payload.data?.action || "")));
+
+    // Claim DOM coverage immediately, before asynchronous extension routing.
+    // The DDB game-log card can appear before the background/Foundry ACK returns.
+    if (isNativeType) {
+      recentWebSocketRolls.push({
+        at: Date.now(),
+        rollId,
+        rollType,
+        action: cleanText(payload.data?.action).toLowerCase(),
+        character: cleanText(payload.data?.context?.name).toLowerCase(),
+        total: Number(firstRoll?.result?.total)
+      });
+      if (recentWebSocketRolls.length > 30) recentWebSocketRolls.shift();
+    }
+
     sendRuntimeMessage({ type: "DDB_ROLL_BRIDGE_FOUND_WS_ROLL", event: payload }, response => {
       if (response?.accepted && response?.routed) {
-        const rollType = String(firstRoll?.rollType || "").toLowerCase();
-        const isNativeType = ["to hit", "check", "save", "damage", "heal"].includes(rollType) ||
-          (rollType === "roll" && /initiative/i.test(String(payload.data?.action || "")));
-        if (isNativeType) {
-          recentWebSocketRolls.push({
-            at: Date.now(),
-            rollId,
-            rollType,
-            action: cleanText(payload.data?.action).toLowerCase(),
-            character: cleanText(payload.data?.context?.name).toLowerCase(),
-            total: Number(firstRoll?.result?.total)
-          });
-          if (recentWebSocketRolls.length > 30) recentWebSocketRolls.shift();
-        }
         log("Forwarded WebSocket roll", { rollId, routed: true });
       } else {
+        // No WebSocket delivery means the legacy DOM scraper must remain available.
+        const index = recentWebSocketRolls.findIndex(entry => entry.rollId === rollId);
+        if (index !== -1) recentWebSocketRolls.splice(index, 1);
         log("WebSocket roll was not routed to Foundry", { rollId, reason: response?.reason || "no Foundry destination" });
       }
     });
