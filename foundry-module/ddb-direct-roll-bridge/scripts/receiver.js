@@ -28,14 +28,19 @@
     document.dispatchEvent(new CustomEvent(name, { detail: JSON.stringify(payload || {}) }));
   }
 
-  function getSpeaker(characterName) {
+  function getSpeaker(characterName, event = null) {
     const name = String(characterName || "").trim();
+    const ddbId = String(event?.entityId || event?.data?.context?.entityId || "").trim();
+    if (ddbId) {
+      const actorId = game.settings.get(MODULE_ID, "actorMappings")?.[ddbId];
+      const mappedActor = actorId ? game.actors.get(actorId) : null;
+      if (mappedActor) return ChatMessage.getSpeaker({ actor: mappedActor });
+    }
     if (!name) return ChatMessage.getSpeaker();
     const actors = game.actors?.filter?.(a => a.name?.toLowerCase() === name.toLowerCase()) || [];
     if (actors.length === 1) return ChatMessage.getSpeaker({ actor: actors[0] });
     return { ...ChatMessage.getSpeaker(), alias: name };
   }
-
   function buildContent(roll) {
     const character = escapeHtml(roll.character || "D&D Beyond");
     const title = escapeHtml(roll.title || "D&D Beyond Roll");
@@ -128,7 +133,7 @@
     if (!id) throw new Error("Cannot create fallback without a D&D Beyond roll ID");
     const roll = buildFallbackRoll(event, reason);
     const messageData = {
-      speaker: getSpeaker(roll.character),
+      speaker: getSpeaker(roll.character, event),
       content: buildContent(roll),
       flags: {
         [MODULE_ID]: {
@@ -154,13 +159,9 @@
 
   function findAttackSource(event) {
     const data = event?.data;
-    const name = String(data?.context?.name || "").trim();
     const action = String(data?.action || "").trim();
-    if (!name || !action) throw new Error("Missing D&D Beyond character or action name");
-
-    const actors = game.actors.filter(a => a.name?.toLowerCase() === name.toLowerCase());
-    if (actors.length !== 1) throw new Error(`Expected one Foundry actor named "${name}", found ${actors.length}`);
-    const actor = actors[0];
+    if (!action) throw new Error("Missing D&D Beyond action name");
+    const actor = resolveActorForEvent(event);
 
     const items = actor.items.filter(i => normalizeItemName(i.name) === normalizeItemName(action));
     if (items.length !== 1) throw new Error(`Expected one item named "${action}" on ${actor.name}, found ${items.length}`);
@@ -264,10 +265,22 @@
 
 
   function resolveActorForEvent(event) {
+    const ddbId = String(event?.entityId || event?.data?.context?.entityId || "").trim();
     const name = String(event?.data?.context?.name || "").trim();
-    if (!name) throw new Error("Missing D&D Beyond character name");
+    if (ddbId) {
+      const mappings = game.settings.get(MODULE_ID, "actorMappings") || {};
+      const actorId = mappings[ddbId];
+      if (actorId) {
+        const actor = game.actors.get(actorId);
+        if (actor) return actor;
+        console.warn(`${MODULE_ID} | D&D Beyond character mapping points to a missing Foundry actor; trying name fallback`, {
+          ddbId, actorId, characterName: name
+        });
+      }
+    }
+    if (!name) throw new Error(`No Foundry actor mapping or D&D Beyond character name is available (DDB ID: ${ddbId || "missing"})`);
     const actors = game.actors.filter(a => a.name?.toLowerCase() === name.toLowerCase());
-    if (actors.length !== 1) throw new Error(`Expected one Foundry actor named "${name}", found ${actors.length}`);
+    if (actors.length !== 1) throw new Error(`Expected one Foundry actor named "${name}", found ${actors.length}. Configure a DDB character mapping in Module Settings.`);
     return actors[0];
   }
 
