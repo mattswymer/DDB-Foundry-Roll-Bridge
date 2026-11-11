@@ -352,10 +352,22 @@
   }
 
   function isTwinLocation(prior, current) {
-    return !prior.isConnected ||
-      prior.parentElement !== current.parentElement ||
-      prior.contains(current) ||
-      current.contains(prior);
+    if (!prior.isConnected ||
+        prior.parentElement !== current.parentElement ||
+        prior.contains(current) ||
+        current.contains(prior)) return true;
+
+    // DDB can render separate roll surfaces as direct children of BODY. Those
+    // roots have no useful shared list/container relationship, so recognize
+    // matching NotRoot surfaces as twins. Ordinary siblings inside a game-log
+    // list remain distinct and are not absorbed.
+    const isPageLevelRollSurface = root =>
+      root.parentElement === document.body &&
+      /NotRoot/i.test(typeof root.className === "string"
+        ? root.className
+        : root.getAttribute("class") || "");
+
+    return isPageLevelRollSurface(prior) && isPageLevelRollSurface(current);
   }
 
   function consumeTwinCredit(signature, root, now) {
@@ -420,7 +432,9 @@
       pendingCoordinatorRoots.delete(meta.cardId);
       if (!root || extensionContextInvalid) return;
       processedElements.add(root);
-      debug("Submitting DOM roll after coordinator disposition", { title: roll.title, reason: meta.reason });
+      debug("Submitting DOM roll after coordinator disposition", {
+        title: roll.title, reason: meta.reason, root: describeDomRoot(root)
+      });
       submitRoll(roll, root);
     },
     onSuppressDom(roll, meta) {
