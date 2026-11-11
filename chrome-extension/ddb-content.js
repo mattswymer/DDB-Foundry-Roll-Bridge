@@ -381,6 +381,26 @@
     }
   }
 
+  function describeDomRoot(root) {
+    if (!root) return null;
+    const cls = typeof root.className === "string"
+      ? root.className
+      : root.getAttribute?.("class") || "";
+    const parent = root.parentElement;
+    const parentClass = parent && (typeof parent.className === "string"
+      ? parent.className
+      : parent.getAttribute?.("class") || "");
+    return {
+      tag: root.tagName,
+      id: root.id || null,
+      className: String(cls).slice(0, 180),
+      parentTag: parent?.tagName || null,
+      parentClass: String(parentClass || "").slice(0, 180),
+      connected: root.isConnected,
+      text: textOf(root).slice(0, 180)
+    };
+  }
+
   function matchesWebSocketToDom(wsRoll, domRoll) {
     const character = cleanText(domRoll.character).toLowerCase();
     const title = cleanText(`${domRoll.title || ""} ${domRoll.rawText || ""}`).toLowerCase();
@@ -406,8 +426,17 @@
     onSuppressDom(roll, meta) {
       const root = pendingCoordinatorRoots.get(meta.cardId);
       pendingCoordinatorRoots.delete(meta.cardId);
-      if (root) processedElements.add(root);
-      debug("Suppressed DOM card after confirmed WebSocket delivery", { title: roll.title, wsId: meta.wsId });
+      if (root) {
+        processedElements.add(root);
+        // A single DDB result can be represented by more than one DOM root
+        // (for example, a transient roll surface and its game-log entry).
+        // Treat the matching representation as a twin only when its location
+        // differs structurally from this root; same-list sibling rolls remain distinct.
+        grantTwinCredit(rollSignature(roll), root, Date.now());
+      }
+      debug("Suppressed DOM card after confirmed WebSocket delivery", {
+        title: roll.title, wsId: meta.wsId, root: describeDomRoot(root)
+      });
     }
   });
 
@@ -480,6 +509,19 @@
 
     cards.delete(key);
     if (pendingCoordinatorRoots.has(key)) return;
+
+    // If a prior DOM representation of this exact roll was suppressed because
+    // its WebSocket delivery succeeded, absorb its structural twin instead of
+    // letting it age into a DOM fallback. Separate sibling cards in the same
+    // list are deliberately not considered twins by isTwinLocation().
+    if (consumeTwinCredit(rollSignature(roll), root, now)) {
+      processedElements.add(root);
+      debug("Absorbed twin DOM representation after WebSocket delivery", {
+        title: roll.title, total: roll.total, root: describeDomRoot(root)
+      });
+      return;
+    }
+
     pendingCoordinatorRoots.set(key, root);
     const decision = coordinator.addDom(key, roll);
     if (decision.action === "duplicate-dom") {
