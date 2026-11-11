@@ -20,6 +20,7 @@
   "changelog": "https://raw.githubusercontent.com/mattswymer/DDB-Foundry-Roll-Bridge/main/CHANGELOG.md",
   "license": "LICENSE",
   "scripts": [
+    "scripts/settings.js",
     "scripts/receiver.js"
   ],
   "styles": [
