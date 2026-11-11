@@ -57,7 +57,11 @@
           select.append(new Option(`${actor.name} (${actor.type})`, actor.id, false, actor.id === selectedId));
         }
         if (selectedId && !actors.some(actor => actor.id === selectedId)) {
-          select.append(new Option(`Existing non-player actor (${selectedId})`, selectedId, true, true));
+          const existingActor = game.actors.get(selectedId);
+          const label = existingActor
+            ? `Existing non-player actor: ${existingActor.name}`
+            : `Missing actor (${selectedId})`;
+          select.append(new Option(label, selectedId, true, true));
         }
         return select;
       }
