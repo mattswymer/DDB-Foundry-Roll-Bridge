@@ -2,6 +2,13 @@
   const MODULE_ID = "ddb-direct-roll-bridge";
   const SETTING_KEY = "actorMappings";
 
+  function parseCharacterId(value) {
+    const input = String(value || "").trim();
+    if (/^[0-9]+$/.test(input)) return input;
+    const match = input.match(/characters\/([0-9]+)/i);
+    return match?.[1] || null;
+  }
+
   Hooks.once("init", () => {
     game.settings.register(MODULE_ID, SETTING_KEY, {
       name: "D&D Beyond Character Mappings",
@@ -20,7 +27,7 @@
         tag: "form",
         window: { title: "D&D Beyond Character Mappings", icon: "fa-solid fa-link" },
         position: { width: 680, height: "auto" },
-        form: { handler: this.#onSubmit, closeOnSubmit: false },
+        form: { handler: this.#onSubmit, closeOnSubmit: true },
         actions: {
           addMapping: this.#addMapping,
           removeMapping: this.#removeMapping
@@ -35,7 +42,7 @@
         const mappings = game.settings.get(MODULE_ID, SETTING_KEY) || {};
         return {
           rows: Object.entries(mappings).map(([ddbId, actorId]) => ({ ddbId, actorId })),
-          actors: game.actors.contents.slice()
+          actors: game.actors.contents.filter(actor => actor.type === "character")
             .sort((a, b) => a.name.localeCompare(b.name))
             .map(actor => ({ id: actor.id, name: actor.name, type: actor.type }))
         };
@@ -50,7 +57,7 @@
           select.append(new Option(`${actor.name} (${actor.type})`, actor.id, false, actor.id === selectedId));
         }
         if (selectedId && !actors.some(actor => actor.id === selectedId)) {
-          select.append(new Option(`Missing actor (${selectedId})`, selectedId, true, true));
+          select.append(new Option(`Existing non-player actor (${selectedId})`, selectedId, true, true));
         }
         return select;
       }
@@ -62,7 +69,7 @@
         idInput.className = "mapping-ddb-id";
         idInput.type = "text";
         idInput.inputMode = "numeric";
-        idInput.placeholder = "D&D Beyond character ID";
+        idInput.placeholder = "D&D Beyond sheet URL or character ID";
         idInput.value = ddbId;
         idInput.required = true;
         const actorSelect = this.#actorOptions(actorId, actors);
@@ -78,7 +85,7 @@
 
       static #addMapping(event, target) {
         const container = this.element.querySelector(".ddb-mapping-rows");
-        const actors = game.actors.contents.slice()
+        const actors = game.actors.contents.filter(actor => actor.type === "character")
           .sort((a, b) => a.name.localeCompare(b.name))
           .map(actor => ({ id: actor.id, name: actor.name, type: actor.type }));
         this.constructor.#addRow(container, actors);
@@ -116,7 +123,6 @@
         }
         await game.settings.set(MODULE_ID, SETTING_KEY, mappings);
         ui.notifications.info(`Saved ${Object.keys(mappings).length} D&D Beyond character mapping(s).`);
-        await this.render();
       }
 
       _onRender(context, options) {
