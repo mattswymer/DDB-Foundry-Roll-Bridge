@@ -19,22 +19,25 @@ function setup({ healthy = true, graceMs = 1000, ackTimeoutMs = 15000, retention
   };
 }
 
-test("WebSocket first: DOM waits and is suppressed after delivery", () => {
+test("WebSocket first: every distinct DOM surface is suppressed after delivery", () => {
   const h = setup();
   h.coordinator.addWebSocket("ws1", h.roll());
-  h.coordinator.addDom("dom1", h.roll());
+  h.coordinator.addDom("popup1", h.roll(), "popup");
+  h.coordinator.addDom("log1", h.roll(), "log");
   h.coordinator.acknowledge("ws1", true);
-  assert.equal(h.suppressed.length, 1);
+  assert.deepEqual(h.suppressed.map(x => x.cardId).sort(), ["log1", "popup1"]);
   assert.equal(h.submitted.length, 0);
 });
 
-test("DOM first: waits for matching WebSocket and successful delivery", () => {
+test("DOM surfaces first: one WebSocket claim pairs and suppresses both", () => {
   const h = setup();
-  h.coordinator.addDom("dom1", h.roll());
-  h.coordinator.addWebSocket("ws1", h.roll());
-  assert.equal(h.submitted.length, 0);
+  h.coordinator.addDom("popup1", h.roll(), "popup");
+  h.coordinator.addDom("log1", h.roll(), "log");
+  const decision = h.coordinator.addWebSocket("ws1", h.roll());
+  assert.equal(decision.domIds.length, 2);
   h.coordinator.acknowledge("ws1", true);
-  assert.equal(h.suppressed.length, 1);
+  assert.equal(h.suppressed.length, 2);
+  assert.equal(h.submitted.length, 0);
 });
 
 test("WebSocket-only roll creates no DOM fallback", () => {
@@ -61,52 +64,63 @@ test("DOM submits immediately when WebSocket hook is unavailable", () => {
   assert.equal(h.submitted[0].reason, "websocket-hook-unavailable");
 });
 
-test("two identical WebSocket rolls pair one-to-one with two DOM cards", () => {
+test("two identical WebSocket rolls pair FIFO independently on popup and log surfaces", () => {
   const h = setup();
   h.coordinator.addWebSocket("ws1", h.roll());
   h.coordinator.addWebSocket("ws2", h.roll());
-  h.coordinator.addDom("dom1", h.roll());
-  h.coordinator.addDom("dom2", h.roll());
+  h.coordinator.addDom("popup1", h.roll(), "popup");
+  h.coordinator.addDom("popup2", h.roll(), "popup");
+  h.coordinator.addDom("log1", h.roll(), "log");
+  h.coordinator.addDom("log2", h.roll(), "log");
   h.coordinator.acknowledge("ws2", true);
   h.coordinator.acknowledge("ws1", true);
-  assert.deepEqual(new Set(h.suppressed.map(x => x.wsId)), new Set(["ws1", "ws2"]));
-  assert.equal(h.suppressed.length, 2);
+  assert.equal(h.suppressed.length, 4);
+  assert.deepEqual(
+    Object.fromEntries(h.suppressed.map(x => [x.cardId, x.wsId])),
+    { popup1: "ws1", popup2: "ws2", log1: "ws1", log2: "ws2" }
+  );
+  assert.equal(h.submitted.length, 0);
 });
 
-test("one WebSocket claim cannot suppress two identical DOM cards", () => {
+test("one failed claim submits one fallback and suppresses its other surface", () => {
   const h = setup();
   h.coordinator.addWebSocket("ws1", h.roll());
-  h.coordinator.addDom("dom1", h.roll());
-  h.coordinator.addDom("dom2", h.roll());
-  h.coordinator.acknowledge("ws1", true);
+  h.coordinator.addDom("popup1", h.roll(), "popup");
+  h.coordinator.addDom("log1", h.roll(), "log");
+  h.coordinator.acknowledge("ws1", false);
+  assert.equal(h.submitted.length, 1);
   assert.equal(h.suppressed.length, 1);
-  h.advance(1000);
-  assert.equal(h.submitted.length, 1);
-  assert.equal(h.submitted[0].cardId, "dom2");
 });
 
-test("routing failure releases a held DOM card", () => {
-  const h = setup();
-  h.coordinator.addDom("dom1", h.roll());
-  h.coordinator.addWebSocket("ws1", h.roll());
-  h.coordinator.acknowledge("ws1", false);
-  assert.equal(h.submitted.length, 1);
-  assert.equal(h.submitted[0].reason, "websocket-failed");
-});
-
-test("failure ACK before DOM arrival submits the later DOM card", () => {
+test("late second surface is suppressed after successful delivery", () => {
   const h = setup();
   h.coordinator.addWebSocket("ws1", h.roll());
-  h.coordinator.acknowledge("ws1", false);
-  h.coordinator.addDom("dom1", h.roll());
-  assert.equal(h.submitted.length, 1);
-});
-
-test("success ACK before DOM arrival suppresses the later DOM card", () => {
-  const h = setup();
-  h.coordinator.addWebSocket("ws1", h.roll());
+  h.coordinator.addDom("popup1", h.roll(), "popup");
   h.coordinator.acknowledge("ws1", true);
-  h.coordinator.addDom("dom1", h.roll());
+  const decision = h.coordinator.addDom("log1", h.roll(), "log");
+  assert.equal(decision.action, "suppress-dom");
+  assert.equal(h.suppressed.length, 2);
+  assert.equal(h.submitted.length, 0);
+});
+
+test("late second surface cannot create a second fallback after failed delivery", () => {
+  const h = setup();
+  h.coordinator.addWebSocket("ws1", h.roll());
+  h.coordinator.addDom("popup1", h.roll(), "popup");
+  h.coordinator.acknowledge("ws1", false);
+  const decision = h.coordinator.addDom("log1", h.roll(), "log");
+  assert.equal(decision.action, "suppress-dom");
+  assert.equal(h.submitted.length, 1);
+  assert.equal(h.suppressed.length, 1);
+});
+
+test("routing failure before DOM arrival submits only the first later surface", () => {
+  const h = setup();
+  h.coordinator.addWebSocket("ws1", h.roll());
+  h.coordinator.acknowledge("ws1", false);
+  h.coordinator.addDom("popup1", h.roll(), "popup");
+  h.coordinator.addDom("log1", h.roll(), "log");
+  assert.equal(h.submitted.length, 1);
   assert.equal(h.suppressed.length, 1);
 });
 
@@ -146,7 +160,6 @@ test("different signatures do not match", () => {
   assert.equal(h.submitted.length, 1);
 });
 
-
 test("DOM-first pairing preserves WebSocket-to-DOM matcher argument order", () => {
   let time = 0;
   const submitted = [], suppressed = [];
@@ -165,13 +178,23 @@ test("DOM-first pairing preserves WebSocket-to-DOM matcher argument order", () =
   coordinator.setHookHealthy(true);
   coordinator.addDom("dom-directional", {
     kind: "dom", total: 18, character: "Barfolomew Wells", action: "Dagger"
-  });
+  }, "log");
   coordinator.addWebSocket("ws-directional", {
     kind: "websocket", total: 18, character: "Barfolomew Wells", action: "Dagger"
   });
   coordinator.acknowledge("ws-directional", true);
   assert.equal(suppressed.length, 1);
   assert.equal(submitted.length, 0);
+});
+
+test("ack timeout resolves all paired surfaces with at most one fallback", () => {
+  const h = setup({ ackTimeoutMs: 100 });
+  h.coordinator.addWebSocket("ws1", h.roll());
+  h.coordinator.addDom("popup1", h.roll(), "popup");
+  h.coordinator.addDom("log1", h.roll(), "log");
+  h.advance(100);
+  assert.equal(h.submitted.length, 1);
+  assert.equal(h.suppressed.length, 1);
 });
 
 test("old coordinator records are pruned", () => {

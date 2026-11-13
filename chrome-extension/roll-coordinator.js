@@ -30,20 +30,28 @@
       }
     }
 
-    addDom(cardId, roll) {
+    addDom(cardId, roll, surface = "other") {
       if (!cardId || this.domCards.has(cardId)) return { action: "duplicate-dom" };
       const now = this.now();
-      const card = { id: cardId, roll, status: "waiting", createdAt: now, expiresAt: now + this.graceMs, sequence: ++this.sequence, wsId: null };
+      const normalizedSurface = typeof surface === "string" && surface ? surface : "other";
+      const card = {
+        id: cardId, roll, surface: normalizedSurface, status: "waiting",
+        createdAt: now, expiresAt: now + this.graceMs,
+        sequence: ++this.sequence, wsId: null
+      };
       this.domCards.set(cardId, card);
       if (!this.hookHealthy) {
         this._submit(card, "websocket-hook-unavailable");
         return { action: "submit-dom", reason: "websocket-hook-unavailable" };
       }
-      const claim = this._oldestMatchingWs(roll, ["pending", "delivered", "failed"]);
+      const claim = this._oldestMatchingWs(roll, ["pending", "delivered", "failed", "timed-out"], normalizedSurface);
       if (claim) {
         this._pair(card, claim);
-        this._applyWsStatus(card, claim);
-        return { action: card.status === "waiting" ? "hold-dom" : card.status === "suppressed" ? "suppress-dom" : "submit-dom", wsId: claim.id };
+        this._applyWsStatus(claim);
+        return {
+          action: card.status === "waiting" ? "hold-dom" : card.status === "suppressed" ? "suppress-dom" : "submit-dom",
+          wsId: claim.id
+        };
       }
       return { action: "hold-dom", expiresAt: card.expiresAt };
     }
@@ -55,17 +63,35 @@
       const now = this.now();
       const lateDom = this._oldestMatchingDom(roll, ["submitted"]);
       if (lateDom) {
-        const suppressed = { id: wsId, roll, status: "suppressed", createdAt: now, sequence: ++this.sequence, domId: lateDom.id };
+        const suppressed = {
+          id: wsId, roll, status: "suppressed", createdAt: now,
+          sequence: ++this.sequence, domId: lateDom.id,
+          domIds: new Map([[lateDom.surface, lateDom.id]])
+        };
         this.wsRolls.set(wsId, suppressed);
         lateDom.wsId = wsId;
         lateDom.matchedLateWsAt = now;
         return { action: "suppress-websocket", domId: lateDom.id, reason: "dom-already-submitted" };
       }
-      const claim = { id: wsId, roll, status: "pending", createdAt: now, sequence: ++this.sequence, domId: null };
+
+      const claim = {
+        id: wsId, roll, status: "pending", createdAt: now,
+        sequence: ++this.sequence, domId: null, domIds: new Map(),
+        fallbackSubmitted: false
+      };
       this.wsRolls.set(wsId, claim);
-      const card = this._oldestMatchingDom(roll, ["waiting"]);
-      if (card) this._pair(card, claim);
-      return { action: "route-websocket", domId: card?.id || null };
+
+      // One fulfilled DDB roll may have one DOM representation per surface.
+      // Pair the oldest waiting card in each distinct surface, preserving FIFO
+      // when multiple identical rolls are in flight.
+      const candidates = Array.from(this.domCards.values())
+        .filter(card => card.status === "waiting" && !card.wsId && this.matches(roll, card.roll))
+        .sort((a, b) => a.sequence - b.sequence);
+      for (const card of candidates) {
+        if (claim.domIds.has(card.surface)) continue;
+        this._pair(card, claim);
+      }
+      return { action: "route-websocket", domId: claim.domId, domIds: Array.from(claim.domIds.values()) };
     }
 
     acknowledge(wsId, ok, detail = {}) {
@@ -75,9 +101,15 @@
       claim.status = ok === true ? "delivered" : "failed";
       claim.acknowledgedAt = this.now();
       claim.detail = detail;
-      const card = claim.domId ? this.domCards.get(claim.domId) : null;
-      if (card && card.status === "waiting") this._applyWsStatus(card, claim);
-      return { action: card ? (card.status === "suppressed" ? "suppress-dom" : "submit-dom") : "recorded", status: claim.status, domId: card?.id || null };
+      this._applyWsStatus(claim);
+      const cards = this._cardsForClaim(claim);
+      return {
+        action: claim.status === "delivered" ? "suppress-dom" : claim.fallbackSubmitted ? "submit-dom" : "recorded",
+        status: claim.status,
+        domId: claim.domId,
+        domIds: Array.from(claim.domIds.values()),
+        cardCount: cards.length
+      };
     }
 
     tick() {
@@ -91,22 +123,22 @@
           if (claim?.status === "pending") {
             claim.status = "timed-out";
             claim.acknowledgedAt = now;
+            this._applyWsStatus(claim);
           }
-          this._submit(card, "websocket-ack-timeout");
         }
       }
       this._prune(now);
     }
 
-    _oldestMatchingWs(roll, statuses) {
+    _oldestMatchingWs(roll, statuses, surface) {
       return Array.from(this.wsRolls.values())
-        .filter(entry => statuses.includes(entry.status) && !entry.domId && this.matches(entry.roll, roll))
+        .filter(entry => statuses.includes(entry.status) &&
+          !entry.domIds?.has(surface) && this.matches(entry.roll, roll))
         .sort((a, b) => a.sequence - b.sequence)[0] || null;
     }
 
     _oldestMatchingDom(roll, statuses) {
-      // Keep the matcher argument order consistent: WebSocket roll first,
-      // DOM roll second, regardless of which one arrived first.
+      // Keep matcher argument order consistent: WebSocket roll first, DOM roll second.
       return Array.from(this.domCards.values())
         .filter(entry => statuses.includes(entry.status) && !entry.wsId && this.matches(roll, entry.roll))
         .sort((a, b) => a.sequence - b.sequence)[0] || null;
@@ -115,12 +147,35 @@
     _pair(card, claim) {
       card.wsId = claim.id;
       card.ackDeadline = this.now() + this.ackTimeoutMs;
-      claim.domId = card.id;
+      if (!claim.domIds) claim.domIds = new Map();
+      claim.domIds.set(card.surface, card.id);
+      if (!claim.domId) claim.domId = card.id;
     }
 
-    _applyWsStatus(card, claim) {
-      if (claim.status === "delivered") this._suppress(card, "websocket-delivered");
-      else if (claim.status === "failed") this._submit(card, "websocket-failed");
+    _cardsForClaim(claim) {
+      return Array.from(claim.domIds?.values() || [])
+        .map(id => this.domCards.get(id))
+        .filter(Boolean)
+        .sort((a, b) => a.sequence - b.sequence);
+    }
+
+    _applyWsStatus(claim) {
+      const cards = this._cardsForClaim(claim).filter(card => card.status === "waiting");
+      if (claim.status === "delivered") {
+        for (const card of cards) this._suppress(card, "websocket-delivered");
+        return;
+      }
+      if (claim.status === "failed" || claim.status === "timed-out") {
+        const reason = claim.status === "failed" ? "websocket-failed" : "websocket-ack-timeout";
+        for (const card of cards) {
+          if (!claim.fallbackSubmitted) {
+            claim.fallbackSubmitted = true;
+            this._submit(card, reason);
+          } else {
+            this._suppress(card, "websocket-fallback-already-submitted");
+          }
+        }
+      }
     }
 
     _submit(card, reason) {

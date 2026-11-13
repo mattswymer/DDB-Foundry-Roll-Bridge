@@ -477,11 +477,8 @@
       pendingCoordinatorRoots.delete(meta.cardId);
       if (root) {
         processedElements.add(root);
-        // A single DDB result can be represented by more than one DOM root
-        // (for example, a transient roll surface and its game-log entry).
-        // Treat the matching representation as a twin only when its location
-        // differs structurally from this root; same-list sibling rolls remain distinct.
-        grantTwinCredit(twinSignature(roll), root, Date.now());
+        // WebSocket-covered representations are all tracked by the coordinator;
+        // do not create a DOM twin credit that could absorb a later real roll.
       }
       trace("dom-disposition", { cardId: meta.cardId, surface: surfaceOf(root), disposition: "suppress", reason: meta.reason, wsId: meta.wsId || null });
       debug("Suppressed DOM card after confirmed WebSocket delivery", {
@@ -578,7 +575,7 @@
     pendingCoordinatorRoots.set(key, root);
     const surface = surfaceOf(root);
     trace("dom-card", { cardId: key, surface });
-    const decision = coordinator.addDom(key, roll);
+    const decision = coordinator.addDom(key, roll, surface);
     trace("coordinator-dom-decision", { cardId: key, surface, action: decision.action, reason: decision.reason || null, wsId: decision.wsId || null });
     if (decision.action === "duplicate-dom") {
       pendingCoordinatorRoots.delete(key);
