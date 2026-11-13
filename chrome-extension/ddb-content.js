@@ -464,29 +464,29 @@
     onAckTimeout(rollId, meta) {
       const requestId = `${rollId}:${meta.attempt}:${Date.now()}`;
       trace("foundry-status-query", { rollId, attempt: meta.attempt, requestId });
-      const sent = sendRuntimeMessage({
-        type: "DDB_ROLL_BRIDGE_WS_STATUS_QUERY",
-        id: rollId,
-        requestId
-      }, response => {
+      let completed = false;
+      const settle = (response, reason = null) => {
+        if (completed) return;
+        completed = true;
+        clearTimeout(queryTimer);
         const status = ["exists", "pending", "unknown"].includes(response?.status)
           ? response.status : "unknown";
         const result = coordinator.resolveStatus(rollId, status, {
-          requestId, reason: response?.reason || null,
+          requestId, reason: reason || response?.reason || null,
           messageId: response?.messageId || null
         });
         trace("foundry-status-response", {
           rollId, attempt: meta.attempt, status,
           coordinatorAction: result.action, coordinatorStatus: result.status || null
         });
-      });
-      if (!sent) {
-        const result = coordinator.resolveStatus(rollId, "unknown", { reason: "status-query-send-failed" });
-        trace("foundry-status-response", {
-          rollId, attempt: meta.attempt, status: "unknown",
-          coordinatorAction: result.action, coordinatorStatus: result.status || null
-        });
-      }
+      };
+      const queryTimer = setTimeout(() => settle(null, "status-query-timeout"), 4000);
+      const sent = sendRuntimeMessage({
+        type: "DDB_ROLL_BRIDGE_WS_STATUS_QUERY",
+        id: rollId,
+        requestId
+      }, response => settle(response));
+      if (!sent) settle(null, "status-query-send-failed");
     },
     onSubmitDom(roll, meta) {
       const root = pendingCoordinatorRoots.get(meta.cardId);
