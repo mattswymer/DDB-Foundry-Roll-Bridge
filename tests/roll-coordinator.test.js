@@ -4,16 +4,17 @@ const { RollCoordinator } = require('../chrome-extension/roll-coordinator.js');
 
 function setup({ healthy = true, graceMs = 1000, ackTimeoutMs = 15000, retentionMs = 30000 } = {}) {
   let time = 0;
-  const submitted = [], suppressed = [];
+  const submitted = [], suppressed = [], statusQueries = [];
   const matches = (a, b) => a.total === b.total && a.character === b.character && a.action === b.action;
   const coordinator = new RollCoordinator({
     matches, now: () => time, graceMs, ackTimeoutMs, retentionMs,
+    onAckTimeout: (id, meta) => statusQueries.push({ id, ...meta }),
     onSubmitDom: (roll, meta) => submitted.push({ roll, ...meta }),
     onSuppressDom: (roll, meta) => suppressed.push({ roll, ...meta })
   });
   coordinator.setHookHealthy(healthy);
   return {
-    coordinator, submitted, suppressed,
+    coordinator, submitted, suppressed, statusQueries,
     advance(ms) { time += ms; coordinator.tick(); },
     roll(extra = {}) { return { total: 17, character: "Fennorin", action: "Shortsword", ...extra }; }
   };
@@ -224,4 +225,59 @@ test("old coordinator records are pruned", () => {
   h.coordinator.acknowledge("ws1", true);
   h.advance(101);
   assert.equal(h.coordinator.addWebSocket("ws1", h.roll()).action, "route-websocket");
+});
+
+
+test("ack timeout queries Foundry and suppresses DOM when the native message exists", () => {
+  const h = setup({ ackTimeoutMs: 100 });
+  h.coordinator.addWebSocket("ws1", h.roll());
+  h.coordinator.addDom("popup1", h.roll(), "popup");
+  h.coordinator.addDom("log1", h.roll(), "log");
+  h.advance(100);
+  assert.equal(h.statusQueries.length, 1);
+  assert.equal(h.statusQueries[0].id, "ws1");
+  assert.equal(h.submitted.length, 0);
+  assert.equal(h.coordinator.resolveStatus("ws1", "exists").action, "suppress-dom");
+  assert.equal(h.suppressed.length, 2);
+  assert.equal(h.submitted.length, 0);
+});
+
+test("pending Foundry processing is polled again without submitting a fallback", () => {
+  const h = setup({ ackTimeoutMs: 100, statusRetryMs: 20 });
+  h.coordinator.addWebSocket("ws1", h.roll());
+  h.coordinator.addDom("popup1", h.roll(), "popup");
+  h.advance(100);
+  assert.equal(h.statusQueries.length, 1);
+  assert.equal(h.coordinator.resolveStatus("ws1", "pending").action, "retry-status");
+  h.advance(20);
+  assert.equal(h.statusQueries.length, 2);
+  assert.equal(h.submitted.length, 0);
+  assert.equal(h.coordinator.resolveStatus("ws1", "exists").action, "suppress-dom");
+  assert.equal(h.suppressed.length, 1);
+});
+
+test("unknown Foundry status is checked twice before one DOM fallback is submitted", () => {
+  const h = setup({ ackTimeoutMs: 100, statusRetryMs: 20 });
+  h.coordinator.addWebSocket("ws1", h.roll());
+  h.coordinator.addDom("popup1", h.roll(), "popup");
+  h.coordinator.addDom("log1", h.roll(), "log");
+  h.advance(100);
+  assert.equal(h.coordinator.resolveStatus("ws1", "unknown").action, "retry-status");
+  h.advance(20);
+  assert.equal(h.statusQueries.length, 2);
+  assert.equal(h.coordinator.resolveStatus("ws1", "unknown").action, "submit-fallback");
+  assert.equal(h.submitted.length, 1);
+  assert.equal(h.suppressed.length, 1);
+});
+
+test("late final acknowledgment wins while a status query is in flight", () => {
+  const h = setup({ ackTimeoutMs: 100 });
+  h.coordinator.addWebSocket("ws1", h.roll());
+  h.coordinator.addDom("popup1", h.roll(), "popup");
+  h.coordinator.addDom("log1", h.roll(), "log");
+  h.advance(100);
+  assert.equal(h.coordinator.acknowledge("ws1", true).action, "suppress-dom");
+  assert.equal(h.suppressed.length, 2);
+  assert.equal(h.submitted.length, 0);
+  assert.equal(h.coordinator.resolveStatus("ws1", "unknown").action, "ignore-status");
 });
