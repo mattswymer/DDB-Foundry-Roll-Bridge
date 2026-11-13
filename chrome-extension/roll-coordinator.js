@@ -6,14 +6,16 @@
   "use strict";
 
   class RollCoordinator {
-    constructor({ matches, onSubmitDom, onSuppressDom, now = () => Date.now(), graceMs = 1000, ackTimeoutMs = 15000, retentionMs = 30000 } = {}) {
+    constructor({ matches, onSubmitDom, onSuppressDom, onAckTimeout, now = () => Date.now(), graceMs = 1000, ackTimeoutMs = 15000, statusRetryMs = 2000, retentionMs = 30000 } = {}) {
       if (typeof matches !== "function") throw new TypeError("matches must be a function");
       this.matches = matches;
       this.onSubmitDom = typeof onSubmitDom === "function" ? onSubmitDom : () => {};
       this.onSuppressDom = typeof onSuppressDom === "function" ? onSuppressDom : () => {};
+      this.onAckTimeout = typeof onAckTimeout === "function" ? onAckTimeout : () => {};
       this.now = now;
       this.graceMs = graceMs;
       this.ackTimeoutMs = ackTimeoutMs;
+      this.statusRetryMs = statusRetryMs;
       this.retentionMs = retentionMs;
       this.hookHealthy = false;
       this.domCards = new Map();
@@ -94,7 +96,7 @@
       const claim = {
         id: wsId, roll, status: "pending", createdAt: now,
         sequence: ++this.sequence, domId: null, domIds: new Map(),
-        fallbackSubmitted: false
+        fallbackSubmitted: false, statusChecks: 0, unknownStatusChecks: 0
       };
       this.wsRolls.set(wsId, claim);
 
@@ -129,6 +131,36 @@
       };
     }
 
+    resolveStatus(wsId, status, detail = {}) {
+      const claim = this.wsRolls.get(wsId);
+      if (!claim || !["checking", "pending"].includes(claim.status)) {
+        return { action: "ignore-status", status: claim?.status || "unknown-websocket" };
+      }
+      claim.statusCheckInFlight = false;
+      claim.statusDetail = detail;
+      if (status === "exists") {
+        claim.status = "delivered";
+        claim.acknowledgedAt = this.now();
+        this._applyWsStatus(claim);
+        return { action: "suppress-dom", status: claim.status };
+      }
+      if (status === "pending") {
+        claim.status = "checking";
+        claim.ackDeadline = this.now() + this.statusRetryMs;
+        return { action: "retry-status", status: claim.status };
+      }
+      claim.unknownStatusChecks++;
+      if (claim.unknownStatusChecks < 2) {
+        claim.status = "checking";
+        claim.ackDeadline = this.now() + this.statusRetryMs;
+        return { action: "retry-status", status: claim.status };
+      }
+      claim.status = "failed";
+      claim.acknowledgedAt = this.now();
+      this._applyWsStatus(claim);
+      return { action: "submit-fallback", status: claim.status };
+    }
+
     tick() {
       const now = this.now();
       for (const card of this.domCards.values()) {
@@ -137,10 +169,14 @@
           this._submit(card, "grace-expired");
         } else if (card.wsId && now >= card.ackDeadline) {
           const claim = this.wsRolls.get(card.wsId);
-          if (claim?.status === "pending") {
-            claim.status = "timed-out";
-            claim.acknowledgedAt = now;
-            this._applyWsStatus(claim);
+          if (!claim || !["pending", "checking"].includes(claim.status) || claim.statusCheckInFlight) continue;
+          if (claim.status === "pending") claim.status = "checking";
+          claim.statusCheckInFlight = true;
+          claim.statusChecks++;
+          try {
+            this.onAckTimeout(claim.id, { attempt: claim.statusChecks });
+          } catch (error) {
+            this.resolveStatus(claim.id, "unknown", { reason: String(error?.message || error) });
           }
         }
       }
