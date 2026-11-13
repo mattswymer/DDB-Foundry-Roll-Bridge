@@ -191,6 +191,14 @@
     }
     if (message?.type === "DDB_ROLL_BRIDGE_WS_STATUS_QUERY") {
       const query = { id: message.id, requestId: message.requestId || null };
+      if (pendingRolls.some(entry => entry.roll?.id === query.id)) {
+        sendResponse({ ...query, status: "pending", reason: "foundry-module-startup-queue" });
+        return true;
+      }
+      if (!moduleReady) {
+        sendResponse({ ...query, status: "unknown", reason: "foundry-module-not-ready" });
+        return true;
+      }
       let result = null;
       const onResult = event => {
         let detail = {};
