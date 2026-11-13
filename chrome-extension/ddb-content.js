@@ -461,6 +461,33 @@
     graceMs: 1000,
     ackTimeoutMs: 15000,
     retentionMs: 30000,
+    onAckTimeout(rollId, meta) {
+      const requestId = `${rollId}:${meta.attempt}:${Date.now()}`;
+      trace("foundry-status-query", { rollId, attempt: meta.attempt, requestId });
+      const sent = sendRuntimeMessage({
+        type: "DDB_ROLL_BRIDGE_WS_STATUS_QUERY",
+        id: rollId,
+        requestId
+      }, response => {
+        const status = ["exists", "pending", "unknown"].includes(response?.status)
+          ? response.status : "unknown";
+        const result = coordinator.resolveStatus(rollId, status, {
+          requestId, reason: response?.reason || null,
+          messageId: response?.messageId || null
+        });
+        trace("foundry-status-response", {
+          rollId, attempt: meta.attempt, status,
+          coordinatorAction: result.action, coordinatorStatus: result.status || null
+        });
+      });
+      if (!sent) {
+        const result = coordinator.resolveStatus(rollId, "unknown", { reason: "status-query-send-failed" });
+        trace("foundry-status-response", {
+          rollId, attempt: meta.attempt, status: "unknown",
+          coordinatorAction: result.action, coordinatorStatus: result.status || null
+        });
+      }
+    },
     onSubmitDom(roll, meta) {
       const root = pendingCoordinatorRoots.get(meta.cardId);
       pendingCoordinatorRoots.delete(meta.cardId);
