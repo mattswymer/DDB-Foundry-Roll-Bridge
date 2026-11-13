@@ -365,17 +365,17 @@
     if (!prior.isConnected) return true;
     if (prior.contains(current) || current.contains(prior)) return true;
 
-    const classOf = root => typeof root.className === "string"
+    const classOf = root => typeof root?.className === "string"
       ? root.className
-      : root.getAttribute("class") || "";
+      : root?.getAttribute?.("class") || "";
 
     // Match only the two DDB surfaces seen in the duplicate-roll capture.
     const isPageLevelRollSurface = root =>
       root.parentElement === document.body && /NotRoot/i.test(classOf(root));
     const isChatLogEntry = root =>
       root.tagName === "SPAN" &&
-      /tss-wspad5-MessageContent/i.test(classOf(root)) &&
-      /tss-1bflx0y-MessageWrapper/i.test(classOf(root.parentElement || {}));
+      /MessageContent/i.test(classOf(root)) &&
+      /MessageWrapper/i.test(classOf(root.parentElement || {}));
 
     return (isPageLevelRollSurface(prior) && isChatLogEntry(current)) ||
       (isChatLogEntry(prior) && isPageLevelRollSurface(current));
