@@ -2,12 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { RollCoordinator } = require('../chrome-extension/roll-coordinator.js');
 
-function setup({ healthy = true, graceMs = 1000, ackTimeoutMs = 15000, retentionMs = 30000 } = {}) {
+function setup({ healthy = true, graceMs = 1000, ackTimeoutMs = 15000, statusRetryMs = 2000, retentionMs = 30000 } = {}) {
   let time = 0;
   const submitted = [], suppressed = [], statusQueries = [];
   const matches = (a, b) => a.total === b.total && a.character === b.character && a.action === b.action;
   const coordinator = new RollCoordinator({
-    matches, now: () => time, graceMs, ackTimeoutMs, retentionMs,
+    matches, now: () => time, graceMs, ackTimeoutMs, statusRetryMs, retentionMs,
     onAckTimeout: (id, meta) => statusQueries.push({ id, ...meta }),
     onSubmitDom: (roll, meta) => submitted.push({ roll, ...meta }),
     onSuppressDom: (roll, meta) => suppressed.push({ roll, ...meta })
@@ -209,12 +209,16 @@ test("DOM-first pairing preserves WebSocket-to-DOM matcher argument order", () =
   assert.equal(submitted.length, 0);
 });
 
-test("ack timeout resolves all paired surfaces with at most one fallback", () => {
-  const h = setup({ ackTimeoutMs: 100 });
+test("unconfirmed delivery submits at most one fallback after status checks", () => {
+  const h = setup({ ackTimeoutMs: 100, statusRetryMs: 20 });
   h.coordinator.addWebSocket("ws1", h.roll());
   h.coordinator.addDom("popup1", h.roll(), "popup");
   h.coordinator.addDom("log1", h.roll(), "log");
   h.advance(100);
+  assert.equal(h.submitted.length, 0);
+  h.coordinator.resolveStatus("ws1", "unknown");
+  h.advance(20);
+  h.coordinator.resolveStatus("ws1", "unknown");
   assert.equal(h.submitted.length, 1);
   assert.equal(h.suppressed.length, 1);
 });
