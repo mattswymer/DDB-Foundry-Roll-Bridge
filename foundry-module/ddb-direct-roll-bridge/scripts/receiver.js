@@ -431,7 +431,8 @@
     if (items.length !== 1) throw new Error(`Expected one item named "${event.data.action}" on ${actor.name}, found ${items.length}`);
     const item = items[0];
     const activities = Array.from(item.system.activities?.values?.() || item.system.activities || [])
-      .filter(activity => Array.isArray(activity.damage?.parts) && activity.damage.parts.length);
+      .filter(activity => Array.isArray(activity.damage?.parts) && activity.damage.parts.length &&
+        (item.type !== "weapon" || activity.type === "attack"));
     if (activities.length !== 1) {
       throw new Error(`Expected one damage activity on ${item.name}, found ${activities.length}`);
     }
