@@ -478,7 +478,6 @@
 
   function submitRoll(roll, root) {
     if (extensionContextInvalid || !roll?.id || seen.has(roll.id)) return;
-    const signature = rollSignature(roll);
     const now = Date.now();
     if (consumeTwinCredit(twinSignature(roll), root, now)) {
       debug("Absorbed twin copy of a roll that was already sent", { title: roll.title, total: roll.total });
