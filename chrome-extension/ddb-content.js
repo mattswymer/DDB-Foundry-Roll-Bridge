@@ -608,10 +608,25 @@
     coordinator.tick();
     const now = Date.now();
     for (const [key, card] of Array.from(cards)) {
-      if (!card.root.isConnected || now - card.firstSeenAt > MAX_PENDING_AGE_MS) {
+      if (!card.root.isConnected) {
         clearTimeout(card.timer);
         cards.delete(key);
-        debug("Dropped unresolved or removed card", textOf(card.root).slice(0, 120));
+      } else if (now - card.firstSeenAt > MAX_PENDING_AGE_MS) {
+        clearTimeout(card.timer);
+        cards.delete(key);
+
+        // Broad DDB selectors can briefly track unrelated sheet/list content.
+        // Keep diagnostics useful by reporting only candidates that resemble an
+        // actual roll, rather than every stale or removed React element.
+        const candidateText = textOf(card.root).slice(0, 120);
+        const resemblesRoll = /\b(?:rolled|rolls|rolling|made|casts?|uses?)\b/i.test(candidateText) &&
+          /\b(?:d\d+|total|result)\b/i.test(candidateText);
+        if (resemblesRoll) {
+          debug("Expired unresolved roll candidate", {
+            ageMs: now - card.firstSeenAt,
+            text: candidateText
+          });
+        }
       } else if (card.sig === null) {
         evaluateCard(card.root);
       }
