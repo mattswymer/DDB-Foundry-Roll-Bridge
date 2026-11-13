@@ -6,9 +6,9 @@
 [![Issues](https://img.shields.io/github/issues/mattswymer/DDB-Foundry-Roll-Bridge)](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/issues)
 [![License](https://img.shields.io/github/license/mattswymer/DDB-Foundry-Roll-Bridge)](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/blob/main/LICENSE)
 
-Roll on D&D Beyond and see the result appear in Foundry VTT chat. This project combines a Chrome/Edge browser extension with a small Foundry module to mirror completed rolls from the visible D&D Beyond game log into readable, Foundry-styled chat cards.
+Roll on D&D Beyond and see the result appear in Foundry VTT chat. This project combines a Chrome/Edge browser extension with a Foundry module to reconstruct supported D&D Beyond rolls as native D&D 5e messages. The extension captures completed roll events from D&D Beyond's WebSocket connection and uses DOM detection as a coordinated fallback and duplicate-suppression layer.
 
-**Current version:** 1.0.1 · **Package type:** Foundry VTT module + browser extension
+**Current version:** 1.0.6 · **Package type:** Foundry VTT module + browser extension
 
 ## Quick links
 
@@ -21,9 +21,10 @@ Roll on D&D Beyond and see the result appear in Foundry VTT chat. This project c
 
 ## Features
 
-- Captures completed rolls from the visible D&D Beyond game log.
-- Displays the character, roll name, formula, dice results, and total when D&D Beyond exposes those details.
-- Filters duplicate representations of the same roll while aiming to preserve legitimate rapid rolls.
+- Captures completed D&D Beyond roll events from the page's WebSocket connection.
+- Reconstructs supported attacks, ability checks, saving throws, initiative, damage, and healing as native D&D 5e chat messages.
+- Preserves D&D Beyond's actual die results, including discarded d20 results for advantage and disadvantage.
+- Coordinates the D&D Beyond popup and chat-log representations so one WebSocket roll produces one Foundry roll, while retaining a DOM fallback for failed or unavailable WebSocket delivery.
 - Routes each roll to one eligible Foundry tab rather than posting copies to every open tab.
 - Prefers a ready Foundry GM session and queues rolls briefly while the module starts.
 - Provides extension-popup diagnostics for connection status, rolls seen/routed, acknowledgements, and recent results.
@@ -31,11 +32,11 @@ Roll on D&D Beyond and see the result appear in Foundry VTT chat. This project c
 
 ## What it does—and doesn't do
 
-This is a **chat mirror**, not a native Foundry dice integration. The cards are custom chat messages; they are not native Foundry `Roll` objects.
+Supported roll types are reconstructed as **native D&D 5e messages** using Foundry's roll and chat-message APIs. D&D Beyond's completed WebSocket event is the source of truth for the roll result; the DOM observer is retained for fallback handling and duplicate suppression when the same roll appears in multiple places on the page.
 
-It does **not** synchronize D&D Beyond characters with Foundry actors, move tokens, apply damage or healing, resolve attacks, automate saving throws, or integrate with Midi-QOL. Those features are intentionally outside this project's scope.
+It does **not** synchronize D&D Beyond characters with Foundry actors, move tokens, automatically apply damage or healing, or integrate with Midi-QOL. Attack resolution and damage application remain part of the normal Foundry workflow. Actor and item mapping must be unambiguous for roll types that depend on Foundry items.
 
-The extension reads D&D Beyond's rendered game-log interface. A D&D Beyond UI change can affect extraction, and some details may be unavailable for particular roll types.
+D&D Beyond can change its WebSocket event format or rendered interface. Either change can affect capture or fallback behavior, and some roll types may not be supported.
 
 ## Requirements
 
@@ -119,7 +120,7 @@ These counters are diagnostic indicators, not a guarantee that every D&D Beyond 
 
 ## Privacy and permissions
 
-The extension processes visible roll information from D&D Beyond and sends it to the Foundry tab through the browser extension. It does not require D&D Beyond passwords or Cobalt cookies.
+The extension observes completed roll events on the D&D Beyond page's WebSocket connection and sends supported event data to the Foundry GM tab through browser-extension messaging. DOM content is used for fallback and duplicate detection. It does not require D&D Beyond passwords or Cobalt cookies.
 
 Host access is limited to D&D Beyond, The Forge, and local Foundry addresses listed in `chrome-extension/manifest.json`. Review that file before adding any additional hosts.
 
