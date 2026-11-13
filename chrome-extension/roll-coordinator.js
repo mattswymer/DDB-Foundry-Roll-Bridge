@@ -24,8 +24,21 @@
     setHookHealthy(healthy) {
       this.hookHealthy = healthy === true;
       if (!this.hookHealthy) {
+        const handledClaims = new Set();
         for (const card of this.domCards.values()) {
-          if (card.status === "waiting") this._submit(card, "websocket-hook-unavailable");
+          if (card.status !== "waiting") continue;
+          const claim = card.wsId ? this.wsRolls.get(card.wsId) : null;
+          if (!claim) {
+            this._submit(card, "websocket-hook-unavailable");
+            continue;
+          }
+          if (handledClaims.has(claim.id)) continue;
+          handledClaims.add(claim.id);
+          if (claim.status === "pending") {
+            claim.status = "timed-out";
+            claim.acknowledgedAt = this.now();
+          }
+          this._applyWsStatus(claim);
         }
       }
     }

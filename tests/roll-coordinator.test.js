@@ -140,6 +140,16 @@ test("hook becoming unhealthy releases all waiting DOM cards", () => {
   assert.equal(h.submitted.length, 2);
 });
 
+test("hook becoming unhealthy submits at most one fallback for a paired multi-surface claim", () => {
+  const h = setup();
+  h.coordinator.addWebSocket("ws1", h.roll());
+  h.coordinator.addDom("popup1", h.roll(), "popup");
+  h.coordinator.addDom("log1", h.roll(), "log");
+  h.coordinator.setHookHealthy(false);
+  assert.equal(h.submitted.length, 1);
+  assert.equal(h.suppressed.length, 1);
+});
+
 test("duplicate DOM mutations and duplicate WebSocket IDs are idempotent", () => {
   const h = setup();
   h.coordinator.addWebSocket("ws1", h.roll());
