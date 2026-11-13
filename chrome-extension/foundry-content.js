@@ -189,6 +189,23 @@
       sendResponse({ ok: false, reason: "extension-context-invalid" });
       return true;
     }
+    if (message?.type === "DDB_ROLL_BRIDGE_WS_STATUS_QUERY") {
+      const query = { id: message.id, requestId: message.requestId || null };
+      let result = null;
+      const onResult = event => {
+        let detail = {};
+        try { detail = JSON.parse(event.detail || "{}"); } catch (_) {}
+        if (detail.requestId === query.requestId && detail.id === query.id) result = detail;
+      };
+      document.addEventListener("DDB_DIRECT_ROLL_BRIDGE_WS_STATUS_RESULT", onResult);
+      document.dispatchEvent(new CustomEvent("DDB_DIRECT_ROLL_BRIDGE_WS_STATUS_QUERY", {
+        detail: JSON.stringify(query)
+      }));
+      document.removeEventListener("DDB_DIRECT_ROLL_BRIDGE_WS_STATUS_RESULT", onResult);
+      sendResponse(result || { id: query.id, requestId: query.requestId, status: "unknown" });
+      return true;
+    }
+
     if (message?.type === "DDB_ROLL_BRIDGE_WS_ROLL") {
       const event = message.event;
       const rollId = event?.data?.rollId;
