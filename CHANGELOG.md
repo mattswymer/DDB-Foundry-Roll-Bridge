@@ -4,12 +4,14 @@ All notable changes to DDB Direct Roll Bridge are documented here.
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-11-12
+
 - Coordinate each completed WebSocket roll with both D&D Beyond popup and chat-log DOM surfaces, preserving FIFO matching for rapid repeated rolls.
 - Ensure a failed or timed-out WebSocket delivery produces at most one DOM fallback for a multi-surface roll.
-- Add automated Node.js tests for roll-coordinator matching, delivery, fallback, timeout, and retention behavior.
-- Reduce debug noise from stale, unrelated DOM candidates.
 - Verify Foundry message existence or in-progress processing before submitting a DOM fallback after an acknowledgment timeout; retry ambiguous status responses and honor late final acknowledgments.
-
+- Add automated Node.js tests for roll-coordinator matching, delivery, fallback, timeout, and retention behavior; reduce debug noise from stale, unrelated DOM candidates.
+- Resolve duplicate D&D Beyond-imported healing spells safely by matching activity configuration and preferring the item with importer provenance.
+- Resolve ordinary weapon damage through its Attack activity when the item also contains separate Save activities.
 
 ## [1.0.6] - 2026-11-09
 
@@ -53,4 +55,3 @@ All notable changes to DDB Direct Roll Bridge are documented here.
 
 - Consolidated the read-only D&D Beyond-to-Foundry roll bridge.
 - Added cross-tab routing, duplicate handling, startup queuing, extension diagnostics, and Foundry-styled chat cards.
-- Narrowed browser host permissions to supported D&D Beyond, The Forge, and local Foundry addresses.
