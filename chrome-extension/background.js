@@ -33,6 +33,17 @@ const STATE = {
 };
 
 const MAX_RECENT = 50;
+const DEBUG_TRACE_MAX = 200;
+const DEBUG_TRACE = [];
+let DEBUG_TRACE_ENABLED = false;
+globalThis.__ddbBridgeTrace = DEBUG_TRACE;
+function trace(event, detail = {}) {
+  if (!DEBUG_TRACE_ENABLED) return;
+  const entry = { at: Date.now(), event, ...detail };
+  DEBUG_TRACE.push(entry);
+  if (DEBUG_TRACE.length > DEBUG_TRACE_MAX) DEBUG_TRACE.shift();
+  console.debug("[DDB → Foundry Roll Bridge] trace:", entry);
+}
 const MAX_SEEN = 200;
 // Multiple open D&D Beyond character tabs can independently observe the same
 // shared game-log roll. Deduplicate at the background level, across all tabs.
@@ -226,6 +237,12 @@ async function broadcastRoll(roll) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || !message.type) return;
 
+  if (message.type === "DDB_ROLL_BRIDGE_DEBUG_STATE") {
+    DEBUG_TRACE_ENABLED = message.enabled === true;
+    sendResponse({ ok: true, enabled: DEBUG_TRACE_ENABLED });
+    return true;
+  }
+
   if (message.type === "DDB_ROLL_BRIDGE_DDB_STATUS") {
     STATE.ddb = {
       ...STATE.ddb,
@@ -246,6 +263,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
     }
     const existingState = STATE.wsRollStates.get(rollId);
+    trace("websocket-roll-received", { rollId, stateExists: !!existingState, state: existingState?.status || null, sourceTabCount: existingState?.sourceTabIds?.size ?? 0 });
     if (existingState) {
       // A second DDB tab may observe the same shared game-log event. It must
       // inherit the first tab's eventual routing result, not interpret the
@@ -292,6 +310,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (routingState.status === "pending") {
         routingState.status = sent > 0 ? "routed" : "failed";
       }
+      trace("websocket-route-result", { rollId, sent, status: routingState.status, sourceTabCount: routingState.sourceTabIds.size });
       if (sent <= 0) routingState.sourceTabIds.clear();
       const response = {
         ok: true,
@@ -409,12 +428,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Relay the final Foundry disposition (success or failure) to every DDB tab
     // that observed this roll. The DDB coordinator must not treat "routed" as delivered.
     const routingState = ack?.id ? STATE.wsRollStates.get(ack.id) : null;
+    trace("foundry-ack-at-background", {
+      rollId: ack?.id || null,
+      stateExists: !!routingState,
+      state: routingState?.status || null,
+      sourceTabCount: routingState?.sourceTabIds?.size ?? 0,
+      ackOk: ack?.ok === true
+    });
     if (routingState && (ack?.ok === false || ack?.ok === true)) {
       routingState.status = ack.ok === true ? "delivered" : "failed";
-      for (const sourceTabId of routingState.sourceTabIds) {
+      const sourceTabIds = Array.from(routingState.sourceTabIds);
+      trace("foundry-ack-relay", { rollId: ack.id, sourceTabCount: sourceTabIds.length });
+      for (const sourceTabId of sourceTabIds) {
         chrome.tabs.sendMessage(sourceTabId, {
           type: "DDB_ROLL_BRIDGE_WS_ACK", ack
-        }).catch(() => {});
+        }).then(() => {
+          trace("foundry-ack-tab-delivered", { rollId: ack.id, sourceTabId });
+        }).catch(() => {
+          trace("foundry-ack-tab-failed", { rollId: ack.id, sourceTabId });
+        });
       }
       routingState.sourceTabIds.clear();
     }

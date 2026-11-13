@@ -46,6 +46,19 @@
     if (DEBUG) console.log(`[${BRIDGE_NAME}] debug:`, ...args);
   }
 
+  // Bounded metadata-only history, controlled by the existing ddbBridgeDebug flag.
+  const TRACE_MAX = 200;
+  const traceBuffer = [];
+  window.__ddbBridgeTrace = traceBuffer;
+  function trace(event, detail = {}) {
+    if (!DEBUG) return;
+    const entry = { at: Date.now(), event, ...detail };
+    traceBuffer.push(entry);
+    if (traceBuffer.length > TRACE_MAX) traceBuffer.shift();
+    console.debug(`[${BRIDGE_NAME}] trace:`, entry);
+  }
+  sendRuntimeMessage({ type: "DDB_ROLL_BRIDGE_DEBUG_STATE", enabled: DEBUG });
+
   function stopBridge() {
     if (extensionContextInvalid) return;
     extensionContextInvalid = true;
@@ -404,6 +417,16 @@
     }
   }
 
+  function surfaceOf(root) {
+    if (!root) return "other";
+    const cls = typeof root.className === "string" ? root.className : root.getAttribute?.("class") || "";
+    const parent = root.parentElement;
+    const parentClass = parent && (typeof parent.className === "string" ? parent.className : parent.getAttribute?.("class") || "");
+    if (parent === document.body && /NotRoot/i.test(cls)) return "popup";
+    if (root.tagName === "SPAN" && /MessageContent/i.test(cls) && /MessageWrapper/i.test(parentClass || "")) return "log";
+    return "other";
+  }
+
   function describeDomRoot(root) {
     if (!root) return null;
     const cls = typeof root.className === "string"
@@ -443,6 +466,7 @@
       pendingCoordinatorRoots.delete(meta.cardId);
       if (!root || extensionContextInvalid) return;
       processedElements.add(root);
+      trace("dom-disposition", { cardId: meta.cardId, surface: surfaceOf(root), disposition: "submit", reason: meta.reason, wsId: meta.wsId || null });
       debug("Submitting DOM roll after coordinator disposition", {
         title: roll.title, reason: meta.reason, root: describeDomRoot(root)
       });
@@ -459,6 +483,7 @@
         // differs structurally from this root; same-list sibling rolls remain distinct.
         grantTwinCredit(twinSignature(roll), root, Date.now());
       }
+      trace("dom-disposition", { cardId: meta.cardId, surface: surfaceOf(root), disposition: "suppress", reason: meta.reason, wsId: meta.wsId || null });
       debug("Suppressed DOM card after confirmed WebSocket delivery", {
         title: roll.title, wsId: meta.wsId, root: describeDomRoot(root)
       });
@@ -473,7 +498,11 @@
       type: "DDB_WS_HEALTH_PING",
       nonce: lastHookPingNonce
     }, location.origin);
-    if (Date.now() - lastHookPongAt > HOOK_STALE_MS) coordinator.setHookHealthy(false);
+    if (Date.now() - lastHookPongAt > HOOK_STALE_MS) {
+      const wasHealthy = coordinator.hookHealthy;
+      coordinator.setHookHealthy(false);
+      if (wasHealthy !== coordinator.hookHealthy) trace("hook-health", { healthy: false, reason: "pong-stale" });
+    }
   }
 
   function submitRoll(roll, root) {
@@ -547,7 +576,10 @@
     }
 
     pendingCoordinatorRoots.set(key, root);
+    const surface = surfaceOf(root);
+    trace("dom-card", { cardId: key, surface });
     const decision = coordinator.addDom(key, roll);
+    trace("coordinator-dom-decision", { cardId: key, surface, action: decision.action, reason: decision.reason || null, wsId: decision.wsId || null });
     if (decision.action === "duplicate-dom") {
       pendingCoordinatorRoots.delete(key);
       processedElements.add(root);
@@ -670,7 +702,9 @@
     if (message.type === "DDB_WS_HEALTH_PONG") {
       if (typeof message.nonce === "string" && message.nonce === lastHookPingNonce) {
         lastHookPongAt = Date.now();
+        const wasHealthy = coordinator.hookHealthy;
         coordinator.setHookHealthy(message.healthy === true);
+        if (wasHealthy !== coordinator.hookHealthy) trace("hook-health", { healthy: coordinator.hookHealthy, reason: "pong" });
       }
       return;
     }
@@ -679,6 +713,7 @@
     const rollId = payload?.data?.rollId;
     if (payload?.eventType !== "dice/roll/fulfilled" || !rollId || seenWebSocketRollIds.has(rollId)) return;
     seenWebSocketRollIds.add(rollId);
+    trace("websocket-arrival", { rollId });
     if (seenWebSocketRollIds.size > 300) seenWebSocketRollIds.delete(seenWebSocketRollIds.values().next().value);
     const firstRoll = payload.data?.rolls?.[0];
     const rollType = String(firstRoll?.rollType || "").toLowerCase();
@@ -693,6 +728,7 @@
         rollType
       };
       const decision = coordinator.addWebSocket(rollId, wsMatch);
+      trace("coordinator-websocket-decision", { rollId, action: decision.action, reason: decision.reason || null, domId: decision.domId || null });
       if (decision.action === "suppress-websocket") {
         log("Suppressed late WebSocket duplicate because its DOM fallback was already submitted", { rollId, domId: decision.domId });
         return;
@@ -700,6 +736,7 @@
     }
 
     const sent = sendRuntimeMessage({ type: "DDB_ROLL_BRIDGE_FOUND_WS_ROLL", event: payload }, response => {
+      trace("background-routing-response", { rollId, accepted: !!response?.accepted, routed: !!response?.routed, reason: response?.reason || null });
       if (isNativeType && (!response?.accepted || !response?.routed)) {
         coordinator.acknowledge(rollId, false, { reason: response?.reason || "no Foundry destination" });
       }
@@ -719,6 +756,7 @@
     const ack = message.ack || {};
     if (!ack.id) return;
     const result = coordinator.acknowledge(ack.id, ack.ok === true, { reason: ack.reason || null });
+    trace("foundry-ack-received", { rollId: ack.id, ok: ack.ok === true, reason: ack.reason || null, coordinatorAction: result.action, status: result.status || null });
     log("Received final Foundry acknowledgment", { rollId: ack.id, ok: ack.ok === true, result });
   });
 
