@@ -418,6 +418,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === "DDB_ROLL_BRIDGE_WS_STATUS_QUERY") {
+    const rollId = String(message.id || "");
+    const requestId = String(message.requestId || "");
+    if (!rollId || !requestId) {
+      sendResponse({ id: rollId || null, requestId: requestId || null, status: "unknown", reason: "invalid-query" });
+      return true;
+    }
+    const eligibleTabs = Object.entries(STATE.foundryTabs)
+      .filter(([, status]) => status?.moduleReady === true && status?.isGM === true)
+      .map(([tabId]) => Number(tabId))
+      .filter(Number.isInteger);
+    Promise.all(eligibleTabs.map(tabId =>
+      chrome.tabs.sendMessage(tabId, {
+        type: "DDB_ROLL_BRIDGE_WS_STATUS_QUERY", id: rollId, requestId
+      }).then(result => ({ tabId, result })).catch(() => ({ tabId, result: null }))
+    )).then(results => {
+      const replies = results.map(entry => entry.result).filter(result => result?.id === rollId);
+      const result = replies.find(reply => reply.status === "exists") ||
+        replies.find(reply => reply.status === "pending") ||
+        replies[0] ||
+        { id: rollId, requestId, status: "unknown", reason: eligibleTabs.length ? "no-foundry-response" : "no-ready-foundry-tab" };
+      trace("foundry-status-query-result", {
+        rollId, status: result.status, tabCount: eligibleTabs.length,
+        respondingTabs: replies.length
+      });
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ id: rollId, requestId, status: "unknown", reason: String(error?.message || error) });
+    });
+    return true;
+  }
+
   if (message.type === "DDB_ROLL_BRIDGE_FOUNDRY_ACK") {
     const ack = message.ack || null;
     STATE.foundry.lastAckAt = Date.now();
