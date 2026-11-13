@@ -2,6 +2,14 @@
 
 All notable changes to DDB Direct Roll Bridge are documented here.
 
+## [Unreleased]
+
+- Coordinate each completed WebSocket roll with both D&D Beyond popup and chat-log DOM surfaces, preserving FIFO matching for rapid repeated rolls.
+- Ensure a failed or timed-out WebSocket delivery produces at most one DOM fallback for a multi-surface roll.
+- Add automated Node.js tests for roll-coordinator matching, delivery, fallback, timeout, and retention behavior.
+- Reduce debug noise from stale, unrelated DOM candidates.
+
+
 ## [1.0.6] - 2026-11-09
 
 - Preserve discarded d20 results in native Foundry attack, ability-check, and saving-throw rolls so advantage and disadvantage display both dice.
