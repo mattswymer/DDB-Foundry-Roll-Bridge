@@ -2,6 +2,7 @@
   const MODULE_ID = "ddb-direct-roll-bridge";
   const MODULE_VERSION = "1.0.6";
   const seen = new Set();
+  const processing = new Set();
   const latestAttackContexts = new Map();
   const MAX_SEEN = 300;
 
@@ -692,9 +693,11 @@
         return;
       }
       remembered = remember(id);
+      processing.add(id);
 
       const result = await postNativeEvent(event);
       if (!result?.message?.id) throw new Error("Native roll processing returned without creating a chat message");
+      processing.delete(id);
 
       emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
         ok: true, id, messageId: result.message.id,
@@ -707,6 +710,7 @@
         total: event.data.rolls?.[0]?.result?.total, messageId: result.message.id
       });
     } catch (error) {
+      if (id) processing.delete(id);
       const reason = String(error?.message || error);
       console.error(`${MODULE_ID} | Native WebSocket roll failed`, {
         id,
@@ -773,6 +777,18 @@
       postRoll(roll).catch(err => {
         console.error(`${MODULE_ID} | Failed to post DDB roll`, { id: roll?.id || null, title: roll?.title || null, reason: String(err?.message || err) });
         emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", { ok: false, reason: String(err?.message || err), id: roll?.id || null, at: Date.now() });
+      });
+    });
+
+    document.addEventListener("DDB_DIRECT_ROLL_BRIDGE_WS_STATUS_QUERY", event => {
+      const query = parseEventDetail(event.detail) || {};
+      const id = String(query.id || "");
+      if (!id) return;
+      const existing = findExistingMessage(id);
+      const status = existing ? "exists" : processing.has(id) ? "pending" : "unknown";
+      emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_WS_STATUS_RESULT", {
+        id, requestId: query.requestId || null, status,
+        messageId: existing?.id || null, at: Date.now()
       });
     });
 
