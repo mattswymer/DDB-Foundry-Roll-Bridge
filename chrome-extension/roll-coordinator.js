@@ -116,7 +116,7 @@
     acknowledge(wsId, ok, detail = {}) {
       const claim = this.wsRolls.get(wsId);
       if (!claim) return { action: "unknown-websocket" };
-      if (claim.status !== "pending") return { action: "already-acknowledged", status: claim.status };
+      if (!["pending", "checking"].includes(claim.status)) return { action: "already-acknowledged", status: claim.status };
       claim.status = ok === true ? "delivered" : "failed";
       claim.acknowledgedAt = this.now();
       claim.detail = detail;
