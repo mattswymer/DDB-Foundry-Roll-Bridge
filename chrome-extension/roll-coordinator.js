@@ -37,8 +37,14 @@
           if (handledClaims.has(claim.id)) continue;
           handledClaims.add(claim.id);
           if (claim.status === "pending") {
-            claim.status = "timed-out";
-            claim.acknowledgedAt = this.now();
+            claim.status = "checking";
+            claim.statusCheckInFlight = true;
+            claim.statusChecks = (claim.statusChecks || 0) + 1;
+            try {
+              this.onAckTimeout(claim.id, { attempt: claim.statusChecks, reason: "hook-unavailable" });
+            } catch (error) {
+              this.resolveStatus(claim.id, "unknown", { reason: String(error?.message || error) });
+            }
           }
           this._applyWsStatus(claim);
         }
@@ -55,7 +61,7 @@
         sequence: ++this.sequence, wsId: null
       };
       this.domCards.set(cardId, card);
-      const claim = this._oldestMatchingWs(roll, ["pending", "delivered", "failed", "timed-out"], normalizedSurface);
+      const claim = this._oldestMatchingWs(roll, ["pending", "checking", "delivered", "failed", "timed-out"], normalizedSurface);
       if (claim) {
         this._pair(card, claim);
         if (!this.hookHealthy && claim.status === "pending") {
@@ -249,11 +255,11 @@
 
     _prune(now) {
       for (const [id, card] of this.domCards) {
-        if (now - (card.dispositionAt ?? card.createdAt) > this.retentionMs) this.domCards.delete(id);
+        if (card.status !== "waiting" && now - (card.dispositionAt ?? card.createdAt) > this.retentionMs) this.domCards.delete(id);
       }
       for (const [id, claim] of this.wsRolls) {
-        if (claim.status === "pending" && now - claim.createdAt > this.ackTimeoutMs * 2) this.wsRolls.delete(id);
-        else if (claim.status !== "pending" && now - (claim.acknowledgedAt ?? claim.createdAt) > this.retentionMs) this.wsRolls.delete(id);
+        if (["pending", "checking"].includes(claim.status)) continue;
+        if (now - (claim.acknowledgedAt ?? claim.createdAt) > this.retentionMs) this.wsRolls.delete(id);
       }
     }
   }
