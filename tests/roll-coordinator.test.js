@@ -146,6 +146,34 @@ test("different signatures do not match", () => {
   assert.equal(h.submitted.length, 1);
 });
 
+
+test("DOM-first pairing preserves WebSocket-to-DOM matcher argument order", () => {
+  let time = 0;
+  const submitted = [], suppressed = [];
+  const coordinator = new RollCoordinator({
+    matches: (ws, dom) => ws.kind === "websocket" &&
+      dom.kind === "dom" &&
+      ws.total === dom.total &&
+      ws.character === dom.character &&
+      ws.action === dom.action,
+    now: () => time,
+    graceMs: 1000,
+    ackTimeoutMs: 15000,
+    onSubmitDom: (roll, meta) => submitted.push({ roll, ...meta }),
+    onSuppressDom: (roll, meta) => suppressed.push({ roll, ...meta })
+  });
+  coordinator.setHookHealthy(true);
+  coordinator.addDom("dom-directional", {
+    kind: "dom", total: 18, character: "Barfolomew Wells", action: "Dagger"
+  });
+  coordinator.addWebSocket("ws-directional", {
+    kind: "websocket", total: 18, character: "Barfolomew Wells", action: "Dagger"
+  });
+  coordinator.acknowledge("ws-directional", true);
+  assert.equal(suppressed.length, 1);
+  assert.equal(submitted.length, 0);
+});
+
 test("old coordinator records are pruned", () => {
   const h = setup({ retentionMs: 100 });
   h.coordinator.addWebSocket("ws1", h.roll());
