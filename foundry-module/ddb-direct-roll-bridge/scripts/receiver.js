@@ -683,6 +683,7 @@
       const existing = findExistingMessage(id);
       if (existing) {
         remember(id);
+        processing.delete(id);
         emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
           ok: true, id, duplicate: true, messageId: existing.id, native: true, at: Date.now()
         });
@@ -710,7 +711,6 @@
         total: event.data.rolls?.[0]?.result?.total, messageId: result.message.id
       });
     } catch (error) {
-      if (id) processing.delete(id);
       const reason = String(error?.message || error);
       console.error(`${MODULE_ID} | Native WebSocket roll failed`, {
         id,
@@ -736,6 +736,7 @@
         try {
           const fallback = await postFallbackCard(event, reason);
           remember(id);
+          processing.delete(id);
           emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
             ok: true, id, messageId: fallback.id, fallback: true, reason, at: Date.now()
           });
@@ -743,6 +744,7 @@
           return;
         } catch (fallbackError) {
           console.error(`${MODULE_ID} | Fallback WebSocket card failed`, fallbackError);
+          if (id) processing.delete(id);
           if (id) seen.delete(id);
           emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
             ok: false, id, reason,
@@ -753,6 +755,7 @@
         }
       }
 
+      if (id) processing.delete(id);
       if (id && remembered) seen.delete(id);
       emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
         ok: false, id, reason, native: true, at: Date.now()
