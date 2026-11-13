@@ -53,18 +53,22 @@
         sequence: ++this.sequence, wsId: null
       };
       this.domCards.set(cardId, card);
-      if (!this.hookHealthy) {
-        this._submit(card, "websocket-hook-unavailable");
-        return { action: "submit-dom", reason: "websocket-hook-unavailable" };
-      }
       const claim = this._oldestMatchingWs(roll, ["pending", "delivered", "failed", "timed-out"], normalizedSurface);
       if (claim) {
         this._pair(card, claim);
+        if (!this.hookHealthy && claim.status === "pending") {
+          claim.status = "timed-out";
+          claim.acknowledgedAt = this.now();
+        }
         this._applyWsStatus(claim);
         return {
           action: card.status === "waiting" ? "hold-dom" : card.status === "suppressed" ? "suppress-dom" : "submit-dom",
           wsId: claim.id
         };
+      }
+      if (!this.hookHealthy) {
+        this._submit(card, "websocket-hook-unavailable");
+        return { action: "submit-dom", reason: "websocket-hook-unavailable" };
       }
       return { action: "hold-dom", expiresAt: card.expiresAt };
     }

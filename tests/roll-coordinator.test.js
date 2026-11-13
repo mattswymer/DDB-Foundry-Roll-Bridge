@@ -150,6 +150,17 @@ test("hook becoming unhealthy submits at most one fallback for a paired multi-su
   assert.equal(h.suppressed.length, 1);
 });
 
+test("hook becoming unhealthy does not bypass an already delivered claim", () => {
+  const h = setup();
+  h.coordinator.addWebSocket("ws1", h.roll());
+  h.coordinator.addDom("popup1", h.roll(), "popup");
+  h.coordinator.acknowledge("ws1", true);
+  h.coordinator.setHookHealthy(false);
+  h.coordinator.addDom("log1", h.roll(), "log");
+  assert.equal(h.submitted.length, 0);
+  assert.equal(h.suppressed.length, 2);
+});
+
 test("duplicate DOM mutations and duplicate WebSocket IDs are idempotent", () => {
   const h = setup();
   h.coordinator.addWebSocket("ws1", h.roll());
