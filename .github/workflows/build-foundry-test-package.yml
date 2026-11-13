@@ -1,0 +1,26 @@
+name: Build Foundry Test Package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+
+      - name: Package Foundry module
+        run: |
+          cd foundry-module
+          zip -r ../ddb-direct-roll-bridge-test.zip ddb-direct-roll-bridge
+
+      - name: Upload test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ddb-direct-roll-bridge-test
+          path: ddb-direct-roll-bridge-test.zip
+          retention-days: 14
