@@ -440,17 +440,61 @@
 
   function findHealingSource(event) {
     const actor = resolveActorForEvent(event);
-    const action = String(event.data.action || "").trim().toLowerCase();
-    const normalizeName = name => String(name || "").trim().replace(/\s*\(legacy\)$/i, "").toLowerCase();
-    const items = actor.items.filter(item => normalizeName(item.name) === normalizeName(action));
-    if (items.length !== 1) throw new Error(`Expected one item matching "${event.data.action}" on ${actor.name}, found ${items.length}`);
-    const item = items[0];
-    const activities = Array.from(item.system.activities?.values?.() || item.system.activities || [])
-      .filter(activity => activity.type === "heal" && activity.healing?.formula);
-    if (activities.length !== 1) {
-      throw new Error(`Expected one healing activity on ${item.name}, found ${activities.length}`);
+    const action = String(event.data.action || "").trim();
+    const items = actor.items.filter(item => normalizeItemName(item.name) === normalizeItemName(action));
+    if (!items.length) {
+      throw new Error(`No item matching "${event.data.action}" found on ${actor.name}`);
     }
-    return { actor, item, activity: activities[0] };
+
+    const candidates = items.map(item => ({
+      item,
+      activities: Array.from(item.system.activities?.values?.() || item.system.activities || [])
+        .filter(activity => activity.type === "heal" && activity.healing?.formula)
+    })).filter(candidate => candidate.activities.length > 0);
+
+    if (candidates.length === 1) {
+      const [{ item, activities }] = candidates;
+      if (activities.length !== 1) {
+        throw new Error(`Expected one healing activity on ${item.name}, found ${activities.length}`);
+      }
+      return { actor, item, activity: activities[0] };
+    }
+
+    if (!candidates.length) {
+      throw new Error(`No valid healing activity found for "${event.data.action}" on ${actor.name}`);
+    }
+
+    // DDB Importer can create both a feat-granted spell and a character spell item.
+    // Accept duplicates only when their importer provenance and healing activity
+    // are identical, then prefer the concrete DDB item (ddbimporter.id).
+    if (candidates.some(candidate => candidate.activities.length !== 1)) {
+      throw new Error(`Multiple matching items have ambiguous healing activities for "${event.data.action}" on ${actor.name}`);
+    }
+
+    const metadata = candidates.map(({ item, activities }) => ({
+      definitionId: item.flags?.ddbimporter?.definitionId,
+      importId: item.flags?.ddbimporter?.importId,
+      activity: activities[0]
+    }));
+    const first = metadata[0];
+    const sameImporterSpell = first.definitionId != null && first.importId &&
+      metadata.every(entry =>
+        entry.definitionId === first.definitionId &&
+        entry.importId === first.importId &&
+        entry.activity.id === first.activity.id &&
+        entry.activity.type === first.activity.type &&
+        entry.activity.healing?.formula === first.activity.healing?.formula &&
+        JSON.stringify(entry.activity.healing) === JSON.stringify(first.activity.healing)
+      );
+
+    if (sameImporterSpell) {
+      const concreteItems = candidates.filter(({ item }) => item.flags?.ddbimporter?.id != null);
+      if (concreteItems.length === 1) {
+        return { actor, item: concreteItems[0].item, activity: concreteItems[0].activities[0] };
+      }
+    }
+
+    throw new Error(`Found ${candidates.length} matching healing items for "${event.data.action}" on ${actor.name}; unable to distinguish them safely`);
   }
 
   function buildNativeDamageRoll(event, actor, damagePart, source, defaultType = null) {
