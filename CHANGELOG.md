@@ -8,6 +8,7 @@ All notable changes to DDB Direct Roll Bridge are documented here.
 - Ensure a failed or timed-out WebSocket delivery produces at most one DOM fallback for a multi-surface roll.
 - Add automated Node.js tests for roll-coordinator matching, delivery, fallback, timeout, and retention behavior.
 - Reduce debug noise from stale, unrelated DOM candidates.
+- Verify Foundry message existence or in-progress processing before submitting a DOM fallback after an acknowledgment timeout; retry ambiguous status responses and honor late final acknowledgments.
 
 
 ## [1.0.6] - 2026-11-09
