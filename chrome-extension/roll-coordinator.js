@@ -105,8 +105,10 @@
     }
 
     _oldestMatchingDom(roll, statuses) {
+      // Keep the matcher argument order consistent: WebSocket roll first,
+      // DOM roll second, regardless of which one arrived first.
       return Array.from(this.domCards.values())
-        .filter(entry => statuses.includes(entry.status) && !entry.wsId && this.matches(entry.roll, roll))
+        .filter(entry => statuses.includes(entry.status) && !entry.wsId && this.matches(roll, entry.roll))
         .sort((a, b) => a.sequence - b.sequence)[0] || null;
     }
 
