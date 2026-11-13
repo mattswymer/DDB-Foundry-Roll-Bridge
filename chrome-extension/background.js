@@ -426,7 +426,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
     }
     const eligibleTabs = Object.entries(STATE.foundryTabs)
-      .filter(([, status]) => status?.moduleReady === true && status?.isGM === true)
+      .filter(([, status]) => status?.detected === true)
       .map(([tabId]) => Number(tabId))
       .filter(Number.isInteger);
     Promise.all(eligibleTabs.map(tabId =>
