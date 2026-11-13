@@ -191,8 +191,16 @@
     }
     if (message?.type === "DDB_ROLL_BRIDGE_WS_STATUS_QUERY") {
       const query = { id: message.id, requestId: message.requestId || null };
-      if (pendingRolls.some(entry => entry.roll?.id === query.id)) {
-        sendResponse({ ...query, status: "pending", reason: "foundry-module-startup-queue" });
+      const queuedIndex = pendingRolls.findIndex(entry => entry.roll?.id === query.id);
+      if (queuedIndex >= 0) {
+        const queued = pendingRolls[queuedIndex];
+        if (Date.now() - queued.queuedAt <= MAX_PENDING_ROLL_AGE_MS) {
+          sendResponse({ ...query, status: "pending", reason: "foundry-module-startup-queue" });
+          return true;
+        }
+        pendingRolls.splice(queuedIndex, 1);
+        emitRejectedRollAck(queued.roll, "startup-timeout");
+        sendResponse({ ...query, status: "unknown", reason: "foundry-startup-queue-expired" });
         return true;
       }
       if (!moduleReady) {
