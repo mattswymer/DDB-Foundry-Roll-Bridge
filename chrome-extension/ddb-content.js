@@ -32,7 +32,7 @@
   // on the page (a different parent element), is nested with the original, or replaced
   // an original that has since disappeared. Two matching cards side by side in the same
   // list are two real rolls, never twins.
-  const TWIN_WINDOW_MS = 500;
+  const TWIN_WINDOW_MS = 3000;
   const twinCredits = new Map();
   let DEBUG = false;
   try { DEBUG = localStorage.getItem("ddbBridgeDebug") === "1"; } catch (_) {}
@@ -351,23 +351,34 @@
     ].join("|"));
   }
 
+  function twinSignature(roll) {
+    // The transient popup and chat-log entry can expose different formula text.
+    // Their action and final total are the stable shared identifiers.
+    const canonicalTitle = cleanText(roll.title).toLowerCase()
+      .replace(/\b\d*d\d+\b/gi, "")
+      .replace(/[+-]?\s*\d+(?:\.\d+)?/g, "")
+      .replace(/[^a-z]+/g, "");
+    return hashText([canonicalTitle, String(roll.total)].join("|"));
+  }
+
   function isTwinLocation(prior, current) {
-    if (!prior.isConnected ||
-        prior.parentElement !== current.parentElement ||
-        prior.contains(current) ||
-        current.contains(prior)) return true;
+    if (!prior.isConnected) return true;
+    if (prior.contains(current) || current.contains(prior)) return true;
 
-    // DDB can render separate roll surfaces as direct children of BODY. Those
-    // roots have no useful shared list/container relationship, so recognize
-    // matching NotRoot surfaces as twins. Ordinary siblings inside a game-log
-    // list remain distinct and are not absorbed.
+    const classOf = root => typeof root.className === "string"
+      ? root.className
+      : root.getAttribute("class") || "";
+
+    // Match only the two DDB surfaces seen in the duplicate-roll capture.
     const isPageLevelRollSurface = root =>
-      root.parentElement === document.body &&
-      /NotRoot/i.test(typeof root.className === "string"
-        ? root.className
-        : root.getAttribute("class") || "");
+      root.parentElement === document.body && /NotRoot/i.test(classOf(root));
+    const isChatLogEntry = root =>
+      root.tagName === "SPAN" &&
+      /tss-wspad5-MessageContent/i.test(classOf(root)) &&
+      /tss-1bflx0y-MessageWrapper/i.test(classOf(root.parentElement || {}));
 
-    return isPageLevelRollSurface(prior) && isPageLevelRollSurface(current);
+    return (isPageLevelRollSurface(prior) && isChatLogEntry(current)) ||
+      (isChatLogEntry(prior) && isPageLevelRollSurface(current));
   }
 
   function consumeTwinCredit(signature, root, now) {
@@ -446,7 +457,7 @@
         // (for example, a transient roll surface and its game-log entry).
         // Treat the matching representation as a twin only when its location
         // differs structurally from this root; same-list sibling rolls remain distinct.
-        grantTwinCredit(rollSignature(roll), root, Date.now());
+        grantTwinCredit(twinSignature(roll), root, Date.now());
       }
       debug("Suppressed DOM card after confirmed WebSocket delivery", {
         title: roll.title, wsId: meta.wsId, root: describeDomRoot(root)
@@ -469,11 +480,11 @@
     if (extensionContextInvalid || !roll?.id || seen.has(roll.id)) return;
     const signature = rollSignature(roll);
     const now = Date.now();
-    if (consumeTwinCredit(signature, root, now)) {
+    if (consumeTwinCredit(twinSignature(roll), root, now)) {
       debug("Absorbed twin copy of a roll that was already sent", { title: roll.title, total: roll.total });
       return;
     }
-    grantTwinCredit(signature, root, now);
+    grantTwinCredit(twinSignature(roll), root, now);
 
     seen.add(roll.id);
     if (seen.size > MAX_SEEN) {
@@ -528,7 +539,7 @@
     // its WebSocket delivery succeeded, absorb its structural twin instead of
     // letting it age into a DOM fallback. Separate sibling cards in the same
     // list are deliberately not considered twins by isTwinLocation().
-    if (consumeTwinCredit(rollSignature(roll), root, now)) {
+    if (consumeTwinCredit(twinSignature(roll), root, now)) {
       processedElements.add(root);
       debug("Absorbed twin DOM representation after WebSocket delivery", {
         title: roll.title, total: roll.total, root: describeDomRoot(root)
