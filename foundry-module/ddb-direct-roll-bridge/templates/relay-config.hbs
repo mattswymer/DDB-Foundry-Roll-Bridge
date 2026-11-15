@@ -1,0 +1,61 @@
+<div class="ddb-relay-config">
+  <p>Manage the D&D Beyond Cloud Relay and its campaign profiles. Only the active campaign receives rolls.</p>
+
+  <section>
+    <h3>Relay credentials</h3>
+    <div class="form-group">
+      <label>Admin key</label>
+      <input type="password" name="adminKey" autocomplete="off"
+        placeholder="Enter relay admin key" />
+      <p class="hint">Kept in memory only. Never saved to world settings.</p>
+    </div>
+  </section>
+
+  <hr />
+
+  <section>
+    <h3>Campaign profiles</h3>
+    <p class="hint">Save a name and D&D Beyond Game ID for each campaign.</p>
+    <div class="ddb-relay-profiles"></div>
+    <button type="button" data-action="addProfile">
+      <i class="fa-solid fa-plus"></i> Add Campaign
+    </button>
+  </section>
+
+  <hr />
+
+  <section>
+    <h3>Session controls</h3>
+    <div class="form-group">
+      <label>Active campaign</label>
+      <select name="activeProfile"></select>
+    </div>
+    <div class="form-group">
+      <label>D&D Beyond CobaltSession</label>
+      <input type="password" name="cobaltSession" autocomplete="off"
+        placeholder="Paste CobaltSession when starting" />
+      <p class="hint">Used only to start the session. Never saved by Foundry.</p>
+    </div>
+    <div class="form-group">
+      <label>Relay status</label>
+      <p class="ddb-relay-status">Not connected</p>
+    </div>
+    <div class="form-footer">
+      <button type="button" data-action="refreshStatus">
+        <i class="fa-solid fa-rotate"></i> Refresh Status
+      </button>
+      <button type="button" data-action="startSession">
+        <i class="fa-solid fa-play"></i> Start Session
+      </button>
+      <button type="button" data-action="stopSession">
+        <i class="fa-solid fa-stop"></i> Stop Session
+      </button>
+    </div>
+  </section>
+
+  <footer class="form-footer">
+    <button type="submit">
+      <i class="fa-solid fa-save"></i> Save Campaign Profiles
+    </button>
+  </footer>
+</div>

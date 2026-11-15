@@ -21,6 +21,7 @@
   "license": "LICENSE",
   "scripts": [
     "scripts/settings.js",
+    "scripts/relay.js",
     "scripts/receiver.js"
   ],
   "styles": [
