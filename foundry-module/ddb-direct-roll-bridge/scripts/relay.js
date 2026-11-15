@@ -11,6 +11,7 @@
   let reconnectTimer = null;
   let reconnectDelay = 2000;
   let shouldReconnect = false;
+  let reauthRequired = false;
 
   function notifyStatus(message) {
     document.querySelector(".ddb-relay-status")?.replaceChildren(
@@ -55,6 +56,7 @@
     if (!game.user?.isGM || !adminKey) return;
     disconnectStream();
     shouldReconnect = true;
+    reauthRequired = false;
     reconnectDelay = 2000;
 
     const open = () => {
@@ -80,6 +82,12 @@
             notifyStatus(`Connected — game ${message.gameId}`);
           } else if (message.status === "ddb-connected") {
             notifyStatus("Connected to D&D Beyond");
+          } else if (message.status === "reauth-required") {
+            reauthRequired = true;
+            shouldReconnect = false;
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+            notifyStatus("D&D Beyond login expired. Update the saved login cookie.");
           }
           return;
         }
@@ -95,9 +103,32 @@
         ));
       });
 
-      ws.addEventListener("close", () => {
-        if (socket !== ws || !shouldReconnect) return;
+      ws.addEventListener("close", event => {
+        if (socket !== ws) return;
         socket = null;
+
+        if (!shouldReconnect || reauthRequired) return;
+
+        if (event.code === 1000) {
+          shouldReconnect = false;
+          notifyStatus("Relay session stopped. Reconnect when ready.");
+          return;
+        }
+
+        if (event.code === 4403) {
+          shouldReconnect = false;
+          notifyStatus("Relay admin key is invalid. Check the saved key.");
+          return;
+        }
+
+        if (event.code === 4400) {
+          shouldReconnect = false;
+          notifyStatus("Relay authentication failed. Check the connection settings.");
+          return;
+        }
+
+        // 4402 means no active session or the relay is outside its allowed window.
+        // Keep retrying so the stream reconnects when the session/window becomes available.
         notifyStatus("Disconnected; reconnecting…");
         reconnectTimer = setTimeout(open, reconnectDelay);
         reconnectDelay = Math.min(reconnectDelay * 2, 30000);
