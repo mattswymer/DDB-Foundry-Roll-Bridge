@@ -3,6 +3,8 @@
   const RELAY_URL = "https://ddb-cloud-relay-89085265232.us-east1.run.app";
   const PROFILES_KEY = "campaignProfiles";
   const ACTIVE_PROFILE_KEY = "activeCampaignProfile";
+  const ADMIN_KEY_SETTING = "relayAdminKey";
+  const COBALT_SESSION_SETTING = "cobaltSession";
 
   let adminKey = "";
   let socket = null;
@@ -14,6 +16,13 @@
     document.querySelector(".ddb-relay-status")?.replaceChildren(
       document.createTextNode(message)
     );
+  }
+
+  async function saveCredentials(adminInput, cobaltInput) {
+    adminKey = adminInput?.value.trim() || "";
+    const cobaltSession = cobaltInput?.value.trim() || "";
+    await game.settings.set(MODULE_ID, ADMIN_KEY_SETTING, adminKey);
+    await game.settings.set(MODULE_ID, COBALT_SESSION_SETTING, cobaltSession);
   }
 
   async function api(path, method = "GET", body = null) {
@@ -116,6 +125,22 @@
       default: ""
     });
 
+    game.settings.register(MODULE_ID, ADMIN_KEY_SETTING, {
+      name: "D&D Beyond Relay Admin Key",
+      scope: "client",
+      config: false,
+      type: String,
+      default: ""
+    });
+
+    game.settings.register(MODULE_ID, COBALT_SESSION_SETTING, {
+      name: "D&D Beyond CobaltSession",
+      scope: "client",
+      config: false,
+      type: String,
+      default: ""
+    });
+
     const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
     class DDBRelayConfig extends HandlebarsApplicationMixin(ApplicationV2) {
@@ -141,7 +166,9 @@
       async _prepareContext() {
         return {
           profiles: game.settings.get(MODULE_ID, PROFILES_KEY) || [],
-          activeProfile: game.settings.get(MODULE_ID, ACTIVE_PROFILE_KEY) || ""
+          activeProfile: game.settings.get(MODULE_ID, ACTIVE_PROFILE_KEY) || "",
+          adminKey: game.settings.get(MODULE_ID, ADMIN_KEY_SETTING) || "",
+          cobaltSession: game.settings.get(MODULE_ID, COBALT_SESSION_SETTING) || ""
         };
       }
 
@@ -186,8 +213,24 @@
           ));
         }
 
-        const key = this.element.querySelector('[name="adminKey"]');
-        if (key) key.value = adminKey;
+        const adminInput = this.element.querySelector('[name="adminKey"]');
+        const cobaltInput = this.element.querySelector('[name="cobaltSession"]');
+        if (adminInput) adminInput.value = context.adminKey;
+        if (cobaltInput) cobaltInput.value = context.cobaltSession;
+        adminKey = context.adminKey;
+
+        adminInput?.addEventListener("change", async () => {
+          adminKey = adminInput.value.trim();
+          await game.settings.set(MODULE_ID, ADMIN_KEY_SETTING, adminKey);
+          notifyStatus("Admin key saved in this browser.");
+        });
+
+        cobaltInput?.addEventListener("change", async () => {
+          await game.settings.set(
+            MODULE_ID, COBALT_SESSION_SETTING, cobaltInput.value.trim()
+          );
+          notifyStatus("CobaltSession saved in this browser.");
+        });
       }
 
       static #addProfile() {
@@ -222,7 +265,10 @@
         }
 
         const selected = form.querySelector('[name="activeProfile"]').value;
-        adminKey = form.querySelector('[name="adminKey"]').value.trim();
+        await saveCredentials(
+          form.querySelector('[name="adminKey"]'),
+          form.querySelector('[name="cobaltSession"]')
+        );
 
         await game.settings.set(MODULE_ID, PROFILES_KEY, profiles);
         await game.settings.set(
@@ -231,13 +277,16 @@
           profiles.some(p => p.id === selected) ? selected : ""
         );
 
-        notifyStatus("Campaign profiles saved.");
+        notifyStatus("Campaign profiles and credentials saved in this browser.");
         this.render();
       }
 
       static async #refreshStatus() {
         try {
-          adminKey = this.element.querySelector('[name="adminKey"]').value.trim();
+          await saveCredentials(
+            this.element.querySelector('[name="adminKey"]'),
+            this.element.querySelector('[name="cobaltSession"]')
+          );
           const result = await api("/api/status");
           if (result.active) {
             connectStream();
@@ -253,7 +302,10 @@
 
       static async #startSession() {
         try {
-          adminKey = this.element.querySelector('[name="adminKey"]').value.trim();
+          await saveCredentials(
+            this.element.querySelector('[name="adminKey"]'),
+            this.element.querySelector('[name="cobaltSession"]')
+          );
           const profileId = this.element.querySelector('[name="activeProfile"]').value;
           const profiles = game.settings.get(MODULE_ID, PROFILES_KEY) || [];
           const profile = profiles.find(p => p.id === profileId);
@@ -268,7 +320,6 @@
             gameId: profile.gameId
           });
 
-          this.element.querySelector('[name="cobaltSession"]').value = "";
           notifyStatus(`Starting relay for ${profile.name}…`);
           connectStream();
         } catch (error) {
@@ -278,7 +329,10 @@
 
       static async #stopSession() {
         try {
-          adminKey = this.element.querySelector('[name="adminKey"]').value.trim();
+          await saveCredentials(
+            this.element.querySelector('[name="adminKey"]'),
+            this.element.querySelector('[name="cobaltSession"]')
+          );
           await api("/api/session", "DELETE");
           disconnectStream();
           notifyStatus("Relay stopped.");
