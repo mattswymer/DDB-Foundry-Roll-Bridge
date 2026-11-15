@@ -36,7 +36,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: DDB Direct Roll Bridge v${{ steps.version.outputs.version }}
-          body: Install this release through Foundry using the stable module manifest URL.
+          body: Test release candidate for v1.0.9. Install through Foundry using the RC3 manifest URL on the release/v1.0.9-hardening branch.
           files: ddb-direct-roll-bridge.zip
           prerelease: true
           make_latest: false
