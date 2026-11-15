@@ -6,9 +6,9 @@
 [![Issues](https://img.shields.io/github/issues/mattswymer/DDB-Foundry-Roll-Bridge)](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/issues)
 [![License](https://img.shields.io/github/license/mattswymer/DDB-Foundry-Roll-Bridge)](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/blob/main/LICENSE)
 
-Roll on D&D Beyond and see the result appear in Foundry VTT chat. This project combines a Chrome/Edge browser extension with a Foundry module to reconstruct supported D&D Beyond rolls as native D&D 5e messages. The extension captures completed roll events from D&D Beyond's WebSocket connection and uses DOM detection as a coordinated fallback and duplicate-suppression layer.
+Roll on D&D Beyond and see the result appear in Foundry VTT chat. This project combines a Chrome/Edge browser extension with a Foundry module to reconstruct supported D&D Beyond rolls as native D&D 5e messages. The extension captures completed roll events from D&D Beyond's WebSocket connection and uses DOM detection as a coordinated fallback and duplicate-suppression layer. An optional D&D Beyond Cloud Relay provides an alternative delivery path for users who configure a relay server and campaign session.
 
-**Current version:** 1.0.6 · **Package type:** Foundry VTT module + browser extension
+**Current version:** 1.0.9 · **Package type:** Foundry VTT module + browser extension
 
 ## Quick links
 
@@ -63,6 +63,24 @@ Alternatively, install manually:
 4. Launch the world as the GM.
 
 For The Forge, use its module installation workflow and the manifest URL above.
+
+### Alternative: Use the D&D Beyond Cloud Relay
+
+The Cloud Relay is an optional alternative to the browser extension. It requires
+a separately deployed relay service and a configured D&D Beyond campaign session.
+
+1. Install and enable the Foundry module using the instructions above.
+2. Open the module's **D&D Beyond Cloud Relay** settings.
+3. Enter the relay admin key and configure the campaign profile.
+4. Start the relay session when you want D&D Beyond rolls delivered to Foundry.
+5. Confirm that a test roll appears in Foundry chat.
+
+Only the active campaign profile receives rolls. The relay's availability also
+depends on its configured operating mode and schedule.
+
+The relay server is a separate component; see the
+[DDB Cloud Relay repository](https://github.com/mattswymer/DDB-Cloud-Relay)
+for deployment and administration instructions.
 
 ### 2. Install the browser extension
 

@@ -4,6 +4,16 @@ All notable changes to DDB Direct Roll Bridge are documented here.
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-11-14
+
+- Normalize typographic apostrophes and quotation marks when matching D&D Beyond action names to Foundry items.
+- Prefer the uniquely named Attack activity when a weapon has multiple attack activities, fixing native attack and damage processing for weapons with restricted attack variants.
+
+## [1.0.8] - 2026-11-14
+
+- Add optional D&D Beyond Cloud Relay integration with campaign profile management.
+
+
 ## [1.0.7] - 2026-11-12
 
 - Coordinate each completed WebSocket roll with both D&D Beyond popup and chat-log DOM surfaces, preserving FIFO matching for rapid repeated rolls.

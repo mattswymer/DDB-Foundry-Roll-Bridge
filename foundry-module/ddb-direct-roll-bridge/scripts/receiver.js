@@ -1,6 +1,6 @@
 (() => {
   const MODULE_ID = "ddb-direct-roll-bridge";
-  const MODULE_VERSION = "1.0.6";
+  const MODULE_VERSION = "1.0.9";
   const seen = new Set();
   const processing = new Set();
   const latestAttackContexts = new Map();
@@ -155,7 +155,27 @@
   }
 
   function normalizeItemName(name) {
-    return String(name || "").trim().replace(/\s*\(legacy\)$/i, "").toLowerCase();
+    return String(name || "")
+      .normalize("NFKC")
+      .replace(/[‘’‛′]/g, "'")
+      .replace(/[“”]/g, '"')
+      .trim()
+      .replace(/\s*\(legacy\)$/i, "")
+      .toLowerCase();
+  }
+
+  function selectPreferredAttackActivity(activities, item, kind) {
+    if (activities.length === 1) return activities[0];
+
+    const preferred = activities.filter(
+      activity => normalizeItemName(activity.name) === "attack"
+    );
+
+    if (preferred.length === 1) return preferred[0];
+
+    throw new Error(
+      `Expected one ${kind} activity on ${item.name}, found ${activities.length}`
+    );
   }
 
   function findAttackSource(event) {
@@ -170,8 +190,8 @@
 
     const activities = Array.from(item.system.activities?.values?.() || item.system.activities || [])
       .filter(a => a.type === "attack");
-    if (activities.length !== 1) throw new Error(`Expected one attack activity on ${item.name}, found ${activities.length}`);
-    return { actor, item, activity: activities[0] };
+    const activity = selectPreferredAttackActivity(activities, item, "attack");
+    return { actor, item, activity };
   }
 
   function buildNativeD20Roll(event, actor, activity, usageMessage) {
@@ -433,10 +453,8 @@
     const activities = Array.from(item.system.activities?.values?.() || item.system.activities || [])
       .filter(activity => Array.isArray(activity.damage?.parts) && activity.damage.parts.length &&
         (item.type !== "weapon" || activity.type === "attack"));
-    if (activities.length !== 1) {
-      throw new Error(`Expected one damage activity on ${item.name}, found ${activities.length}`);
-    }
-    return { actor, item, activity: activities[0] };
+    const activity = selectPreferredAttackActivity(activities, item, "damage");
+    return { actor, item, activity };
   }
 
   function findHealingSource(event) {
