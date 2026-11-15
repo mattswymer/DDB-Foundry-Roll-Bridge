@@ -38,4 +38,5 @@ jobs:
           name: DDB Direct Roll Bridge v${{ steps.version.outputs.version }}
           body: Install this release through Foundry using the stable module manifest URL.
           files: ddb-direct-roll-bridge.zip
-          make_latest: true
+          prerelease: true
+          make_latest: false
