@@ -6,6 +6,7 @@ All notable changes to DDB Direct Roll Bridge are documented here.
 
 ## [1.0.9] - 2026-11-14
 
+- Persist the Cloud Relay admin key and D&D Beyond CobaltSession in local Foundry client settings so they survive reloads without being shared through world settings.
 - Normalize typographic apostrophes and quotation marks when matching D&D Beyond action names to Foundry items.
 - Prefer the uniquely named Attack activity when a weapon has multiple attack activities, fixing native attack and damage processing for weapons with restricted attack variants.
 
