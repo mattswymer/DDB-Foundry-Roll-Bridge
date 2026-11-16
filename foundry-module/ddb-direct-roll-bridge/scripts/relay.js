@@ -207,6 +207,7 @@
       static #addRow(container, profile = {}) {
         const row = document.createElement("div");
         row.className = "ddb-relay-profile-row";
+        if (profile.id) row.dataset.profileId = profile.id;
         row.style.cssText = "display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin:8px 0;";
 
         const name = document.createElement("input");
@@ -230,6 +231,8 @@
 
       _onRender(context, options) {
         super._onRender(context, options);
+        const statusElement = this.element.querySelector(".ddb-relay-status");
+        if (statusElement) statusElement.textContent = lastStatus;
         const container = this.element.querySelector(".ddb-relay-profiles");
         container?.replaceChildren();
         for (const profile of context.profiles) {
@@ -288,7 +291,13 @@
             return notifyStatus("Each campaign needs both a name and Game ID.");
           }
 
-          const existing = previous.find(p => p.name === name && p.gameId === gameId);
+          if (!/^[0-9]+$/.test(gameId)) {
+            return notifyStatus("D&D Beyond Game ID must contain digits only.");
+          }
+          if (profiles.some(p => p.name.toLowerCase() === name.toLowerCase() || p.gameId === gameId)) {
+            return notifyStatus("Campaign names and Game IDs must be unique.");
+          }
+          const existing = previous.find(p => p.id === row.dataset.profileId);
           profiles.push({
             id: existing?.id || foundry.utils.randomID(),
             name,
@@ -347,6 +356,19 @@
           if (!profile) throw new Error("Select and save a campaign profile.");
           if (!cobaltSession) throw new Error("Enter the D&D Beyond CobaltSession.");
 
+          const current = await api("/api/status");
+          if (current.active) {
+            if (String(current.gameId) === String(profile.gameId)) {
+              connectStream();
+              notifyStatus(`Relay already active — reattached to ${profile.name}.`);
+              return;
+            }
+            const confirmed = window.confirm(
+              `The relay is already active for game ${current.gameId}. Stop that session and start ${profile.name}?`
+            );
+            if (!confirmed) return;
+            await api("/api/session", "DELETE");
+          }
           await api("/api/session", "POST", {
             cobaltSession,
             gameId: profile.gameId
@@ -381,6 +403,24 @@
       icon: "fa-solid fa-cloud",
       type: DDBRelayConfig,
       restricted: true
+    });
+
+    Hooks.once("ready", async () => {
+      if (!game.user?.isGM) return;
+      adminKey = game.settings.get(MODULE_ID, ADMIN_KEY_SETTING) || "";
+      if (!adminKey) return;
+      try {
+        const status = await api("/api/status");
+        if (status.active) {
+          connectStream();
+          notifyStatus(`Reattaching to active relay session — game ${status.gameId}`);
+        } else {
+          disconnectStream();
+          notifyStatus("No active relay session. Start one in module settings.");
+        }
+      } catch (error) {
+        notifyStatus(`Relay status check failed: ${error.message}`);
+      }
     });
   });
 })();
