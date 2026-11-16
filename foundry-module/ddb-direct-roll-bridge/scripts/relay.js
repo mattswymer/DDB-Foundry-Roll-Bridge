@@ -81,7 +81,7 @@
 
         if (message.type === "status") {
           if (message.status === "stream-ready") {
-            if (Number(message.protocol) < MIN_PROTOCOL) {
+            if (Number(message.protocol) !== MIN_PROTOCOL) {
               shouldReconnect = false;
               notifyStatus("Relay protocol is unsupported. Update the Cloud Relay.");
               ws.close(1002, "Unsupported relay protocol");
