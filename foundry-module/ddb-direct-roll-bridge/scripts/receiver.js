@@ -1,6 +1,6 @@
 (() => {
   const MODULE_ID = "ddb-direct-roll-bridge";
-  const MODULE_VERSION = game.modules.get(MODULE_ID)?.version || "1.1.0";
+  const MODULE_VERSION = globalThis.game?.modules?.get?.(MODULE_ID)?.version || "1.1.1";
   const seen = new Set();
   const processing = new Set();
   const latestAttackContexts = new Map();
