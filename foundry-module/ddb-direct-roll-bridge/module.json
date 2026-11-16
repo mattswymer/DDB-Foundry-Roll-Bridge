@@ -1,11 +1,11 @@
 {
   "id": "ddb-direct-roll-bridge",
   "title": "DDB Direct Roll Bridge",
-  "description": "Mirrors completed D&D Beyond game-log rolls into native Foundry VTT chat cards using a browser extension or the optional D&D Beyond Cloud Relay.",
-  "version": "1.0.9",
+  "description": "Mirrors completed D&D Beyond rolls into native Foundry D&D 5e chat cards. Supports the browser extension and optional D&D Beyond Cloud Relay.",
+  "version": "1.1.0",
   "compatibility": {
-    "minimum": "11",
-    "verified": "13"
+    "minimum": "12",
+    "verified": "14"
   },
   "authors": [
     {
@@ -14,7 +14,7 @@
     }
   ],
   "url": "https://github.com/mattswymer/DDB-Foundry-Roll-Bridge",
-  "manifest": "https://raw.githubusercontent.com/mattswymer/DDB-Foundry-Roll-Bridge/cloud-relay-integration/foundry-module/ddb-direct-roll-bridge/module.json",
+  "manifest": "https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/releases/latest/download/module.json",
   "readme": "https://raw.githubusercontent.com/mattswymer/DDB-Foundry-Roll-Bridge/main/README.md",
   "bugs": "https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/issues",
   "changelog": "https://raw.githubusercontent.com/mattswymer/DDB-Foundry-Roll-Bridge/main/CHANGELOG.md",
@@ -27,5 +27,13 @@
   "styles": [
     "styles/roll-card.css"
   ],
-  "download": "https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/releases/download/v1.0.9-rc.2/ddb-direct-roll-bridge-v1.0.9-rc2.zip"
+  "download": "https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/releases/download/v1.1.0/ddb-direct-roll-bridge-v1.1.0.zip",
+  "relationships": {
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "system"
+      }
+    ]
+  }
 }
