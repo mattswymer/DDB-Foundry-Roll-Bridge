@@ -10,7 +10,7 @@ Roll on D&D Beyond and see the result appear in Foundry VTT chat. The project co
 
 **Version:** 1.1.1  
 **Package:** Foundry VTT module + Manifest V3 browser extension  
-**Status:** v1.1.1 validated in a live Foundry session; stable release packaging is the remaining step.
+**Status:** v1.1.1 validated in a live Foundry session; Cloud Relay production promotion and stable release packaging remain.
 
 ## Project links
 
