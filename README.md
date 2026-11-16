@@ -8,9 +8,9 @@
 
 Roll on D&D Beyond and see the result appear in Foundry VTT chat. The project consists of a Foundry module and a Chrome/Edge extension. An optional D&D Beyond Cloud Relay can deliver completed game-log events directly to the Foundry module without relying on the browser extension's WebSocket capture path.
 
-**Version:** 1.1.0  
+**Version:** 1.1.1  
 **Package:** Foundry VTT module + Manifest V3 browser extension  
-**Status:** Release candidate until the first live-session validation is complete.
+**Status:** Hotfix release; validate roll delivery in a live Foundry session.
 
 ## Project links
 

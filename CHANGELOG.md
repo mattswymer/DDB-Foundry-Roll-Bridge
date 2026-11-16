@@ -4,6 +4,10 @@ All notable changes to DDB Direct Roll Bridge are documented here.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-16
+
+- Prevent receiver startup from crashing when Foundry has not initialized `game.modules` while module scripts are evaluated.
+
 ## [1.1.0] - 2026-11-15
 
 - Restore the Cloud Relay stream after a Foundry world reload when an active session exists.

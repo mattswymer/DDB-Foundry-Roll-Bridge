@@ -2,7 +2,7 @@
   "id": "ddb-direct-roll-bridge",
   "title": "DDB Direct Roll Bridge",
   "description": "Mirrors completed D&D Beyond rolls into native Foundry D&D 5e chat cards. Supports the browser extension and optional D&D Beyond Cloud Relay.",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "compatibility": {
     "minimum": "12",
     "verified": "14"
