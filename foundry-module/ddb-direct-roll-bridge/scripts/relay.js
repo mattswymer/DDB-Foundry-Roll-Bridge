@@ -329,12 +329,17 @@
             this.element.querySelector('[name="cobaltSession"]')
           );
           const result = await api("/api/status");
-          if (result.active) {
+          const profileId = game.settings.get(MODULE_ID, ACTIVE_PROFILE_KEY) || "";
+          const profiles = game.settings.get(MODULE_ID, PROFILES_KEY) || [];
+          const profile = profiles.find(entry => entry.id === profileId);
+          if (result.active && profile && String(result.gameId) === String(profile.gameId)) {
             connectStream();
             notifyStatus(`Relay active — game ${result.gameId}`);
           } else {
             disconnectStream();
-            notifyStatus("Relay is inactive.");
+            notifyStatus(result.active
+              ? `Relay is active for game ${result.gameId}, but the selected campaign does not match.`
+              : "Relay is inactive.");
           }
         } catch (error) {
           notifyStatus(`Status error: ${error.message}`);
