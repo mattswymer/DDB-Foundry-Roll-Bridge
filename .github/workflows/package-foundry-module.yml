@@ -38,6 +38,9 @@ jobs:
           cd foundry-module
           zip -r ../ddb-direct-roll-bridge-v${{ steps.version.outputs.version }}.zip ddb-direct-roll-bridge
           cp ddb-direct-roll-bridge/module.json ../module.json
+          cd ..
+          jq --arg tag "$GITHUB_REF_NAME" --arg version "${{ steps.version.outputs.version }}" '.download = "https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/releases/download/" + $tag + "/ddb-direct-roll-bridge-v" + $version + ".zip"' module.json > module.json.tmp
+          mv module.json.tmp module.json
 
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
