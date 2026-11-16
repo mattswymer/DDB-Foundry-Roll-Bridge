@@ -1,152 +1,137 @@
 # DDB Direct Roll Bridge
 
-**A lightweight D&D Beyond → Foundry VTT roll mirror**
+**Mirror D&D Beyond rolls into native Foundry VTT chat cards.**
 
 [![Latest Release](https://img.shields.io/github/v/release/mattswymer/DDB-Foundry-Roll-Bridge?label=release)](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/releases)
 [![Issues](https://img.shields.io/github/issues/mattswymer/DDB-Foundry-Roll-Bridge)](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/issues)
 [![License](https://img.shields.io/github/license/mattswymer/DDB-Foundry-Roll-Bridge)](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/blob/main/LICENSE)
 
-Roll on D&D Beyond and see the result appear in Foundry VTT chat. This project combines a Chrome/Edge browser extension with a Foundry module to reconstruct supported D&D Beyond rolls as native D&D 5e messages. The extension captures completed roll events from D&D Beyond's WebSocket connection and uses DOM detection as a coordinated fallback and duplicate-suppression layer.
+Roll on D&D Beyond and see the result appear in Foundry VTT chat. The project consists of a Foundry module and a Chrome/Edge extension. An optional D&D Beyond Cloud Relay can deliver completed game-log events directly to the Foundry module without relying on the browser extension's WebSocket capture path.
 
-**Current version:** 1.0.6 · **Package type:** Foundry VTT module + browser extension
+**Version:** 1.1.0  
+**Package:** Foundry VTT module + Manifest V3 browser extension  
+**Status:** Release candidate until the first live-session validation is complete.
 
-## Quick links
+## Project links
 
-- **[Install the Foundry module](#1-install-the-foundry-module)**
-- **[Install the Chrome/Edge extension](#2-install-the-browser-extension)**
-- [Latest release downloads](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/releases)
-- [Report a bug or request a feature](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/issues)
+- [Releases and downloads](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/releases)
 - [Changelog](CHANGELOG.md)
-- [Source code](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge)
+- [Issue tracker](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/issues)
+- [DDB Cloud Relay repository](https://github.com/mattswymer/DDB-Cloud-Relay)
 
 ## Features
 
-- Captures completed D&D Beyond roll events from the page's WebSocket connection.
+- Captures completed D&D Beyond game-log roll events.
 - Reconstructs supported attacks, ability checks, saving throws, initiative, damage, and healing as native D&D 5e chat messages.
-- Preserves D&D Beyond's actual die results, including discarded d20 results for advantage and disadvantage.
-- Coordinates the D&D Beyond popup and chat-log representations so one WebSocket roll produces one Foundry roll, while retaining a DOM fallback for failed or unavailable WebSocket delivery.
-- Routes each roll to one eligible Foundry tab rather than posting copies to every open tab.
-- Prefers a ready Foundry GM session and queues rolls briefly while the module starts.
-- Provides extension-popup diagnostics for connection status, rolls seen/routed, acknowledgements, and recent results.
-- Uses a compact chat-card layout that follows Foundry's default text styling where possible.
+- Preserves D&D Beyond's actual die results, including advantage and disadvantage d20 results.
+- Coordinates WebSocket and DOM delivery to suppress duplicate cards and retain a fallback path.
+- Routes rolls to an eligible Foundry GM tab and supports actor mapping by D&D Beyond character ID.
+- Provides an optional Cloud Relay connection with reconnect handling and session reattachment after a Foundry reload.
 
-## What it does—and doesn't do
-
-Supported roll types are reconstructed as **native D&D 5e messages** using Foundry's roll and chat-message APIs. D&D Beyond's completed WebSocket event is the source of truth for the roll result; the DOM observer is retained for fallback handling and duplicate suppression when the same roll appears in multiple places on the page.
-
-It does **not** synchronize D&D Beyond characters with Foundry actors, move tokens, automatically apply damage or healing, or integrate with Midi-QOL. Attack resolution and damage application remain part of the normal Foundry workflow. Actor and item mapping must be unambiguous for roll types that depend on Foundry items.
-
-D&D Beyond can change its WebSocket event format or rendered interface. Either change can affect capture or fallback behavior, and some roll types may not be supported.
+The module mirrors roll results. It does not synchronize characters, automatically apply damage or healing, or integrate with Midi-QOL. Attack resolution and damage application remain part of the normal Foundry workflow. Some complex dice expressions and item/activity configurations may use the diagnostic fallback card rather than a native system roll.
 
 ## Requirements
 
 - Google Chrome or Microsoft Edge.
-- A D&D Beyond campaign/game log showing the rolls you want to mirror.
-- A Foundry VTT world with **DDB Direct Roll Bridge** enabled.
+- Foundry VTT 12 or later; tested against Foundry VTT 14.
+- The D&D 5e game system (dnd5e).
 - A Foundry GM session open in a supported browser tab.
+- A D&D Beyond campaign/game log showing the rolls to mirror.
 
-## Installation
+## Install the Foundry module
 
-### 1. Install the Foundry module
-
-**Recommended — install by manifest URL:** In Foundry, open **Add-on Modules → Install Module**, paste this URL into **Manifest URL**, and select **Install**:
+In Foundry, open **Add-on Modules → Install Module**, paste the stable manifest URL, and install:
 
 ```
-https://raw.githubusercontent.com/mattswymer/DDB-Foundry-Roll-Bridge/main/foundry-module/ddb-direct-roll-bridge/module.json
+https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/releases/latest/download/module.json
 ```
 
-Alternatively, install manually:
+Enable **DDB Direct Roll Bridge** in the world's Manage Modules settings, then launch the world as GM.
 
-1. Download or clone this repository.
-2. Copy `foundry-module/ddb-direct-roll-bridge` into your Foundry user data directory's `Data/modules/` folder.
-3. Start Foundry and enable **DDB Direct Roll Bridge** in the world's **Manage Modules** settings.
-4. Launch the world as the GM.
+For The Forge, use its module installation workflow and the same manifest URL. Forge reads the module title, description, compatibility, and update information from the module manifest.
 
-For The Forge, use its module installation workflow and the manifest URL above.
+## Install the browser extension
 
-### 2. Install the browser extension
-
-1. Open `chrome://extensions` in Chrome, or `edge://extensions` in Edge.
+1. Open `chrome://extensions` in Chrome or `edge://extensions` in Edge.
 2. Enable **Developer mode**.
 3. Select **Load unpacked**.
 4. Choose this repository's `chrome-extension/` directory.
-5. Pin the extension if you want convenient access to its status popup.
+5. Reload the extension after updates, then refresh the D&D Beyond and Foundry tabs.
 
-After updating the code, use the extension page's **Reload** control, then refresh your D&D Beyond and Foundry tabs.
+The extension's default Foundry host permissions cover The Forge and localhost/127.0.0.1. Custom self-hosted domains require appropriate host permissions to be added to the extension manifest.
 
-### 3. Connect and test
+## Choose a delivery path
+
+### Browser extension
 
 1. Open Foundry and enter the world as GM.
 2. Open the D&D Beyond campaign page and show the game log.
-3. Make a test roll on D&D Beyond.
-4. Confirm that one matching card appears in Foundry chat.
-5. Open the extension popup to check that both tabs are detected, the module is ready, and Foundry acknowledges the roll.
+3. Make a test roll.
+4. Confirm one matching card appears in Foundry chat.
 
-**Important:** The extension currently injects into D&D Beyond, The Forge, and local Foundry URLs (`localhost` and `127.0.0.1`). Arbitrary custom-domain self-hosted Foundry URLs are not included in the default host list.
+The browser extension path does not require your D&D Beyond password or CobaltSession cookie.
+
+### Optional D&D Beyond Cloud Relay
+
+The Cloud Relay is a separate service that you or your administrator deploy and operate. It holds the active D&D Beyond CobaltSession cookie in server memory, exchanges it for short-lived tokens, and forwards live game-log events to the Foundry module.
+
+1. Install and enable the Foundry module.
+2. Open the module's **D&D Beyond Cloud Relay** settings.
+3. Enter the relay admin key and create a campaign profile with its D&D Beyond Game ID.
+4. Paste the CobaltSession cookie value when starting a relay session.
+5. Confirm the relay reports a connection to D&D Beyond and test one roll in Foundry chat.
+
+**Credential warning:** The CobaltSession cookie grants access to your D&D Beyond session. Never share it or paste it into an issue, chat, screenshot, or source file. The module stores the admin key and cookie in Foundry client settings, which are local to that browser but are not encrypted. The relay keeps the cookie in memory while a session is active. Anyone who controls the relay and its admin key may be able to use an active session. Use a private relay deployment and stop sessions when finished.
+
+See the [DDB Cloud Relay repository](https://github.com/mattswymer/DDB-Cloud-Relay) for deployment, configuration, and operational details.
 
 ## Troubleshooting
 
 ### Rolls do not appear
 
 - Confirm the D&D Beyond game log is open and showing the roll.
-- Confirm the Foundry world is open and the module is enabled.
-- Make sure the GM session is active.
-- Open the extension popup and check detection status and acknowledgements.
+- Confirm the Foundry world is open, the module is enabled, and the active user is a GM.
+- Check the extension popup or the module's Cloud Relay status.
+- For the relay path, confirm that the campaign Game ID and saved credentials are correct.
 - Reload the extension and refresh both tabs after installing an update.
 
-### A roll is missing or appears twice
+### A roll appears twice or is missing
 
-- Test with one D&D Beyond campaign/game-log tab and one Foundry GM tab first.
-- Then add other character tabs and repeat the test.
-- Note the roll type, whether the rolls were rapid, and the popup's **Rolls seen**, **Rolls routed**, and **Foundry acknowledgements** counters.
-- D&D Beyond changes its rendered game-log entries over time; report reproducible cases with the roll type and diagnostics.
+- Start with one D&D Beyond game-log tab and one Foundry GM tab.
+- Record the roll type, whether rolls were rapid, and whether multiple GM tabs were open.
+- Check the extension diagnostics and Foundry console for the reported failure reason.
+- Report reproducible cases without including passwords, cookies, session tokens, or private account data.
 
-### The first roll after startup behaves oddly
+### D&D Beyond login expired
 
-Allow Foundry and the module to finish loading before testing. If historical game-log entries are forwarded or the first new roll is missed, capture the popup diagnostics and report the steps that reproduced it.
+Update the saved CobaltSession cookie in the Cloud Relay settings and start a new session. Do not share the cookie with anyone.
 
-## Diagnostics
+## Relay protocol
 
-The extension popup reports:
-
-- **D&D Beyond tab:** whether a supported D&D Beyond page is detected.
-- **Foundry tab:** whether a supported Foundry page is detected.
-- **Foundry module:** whether the receiver is ready and whether the session is a GM.
-- **Rolls seen / Rolls routed:** bridge counters for observed and routed candidates.
-- **Foundry acknowledgements:** messages confirmed by the Foundry receiver.
-- **Recent rolls:** a short list of recent character, roll, and total values.
-
-These counters are diagnostic indicators, not a guarantee that every D&D Beyond roll type was extracted perfectly.
-
-## Privacy and permissions
-
-The extension observes completed roll events on the D&D Beyond page's WebSocket connection and sends supported event data to the Foundry GM tab through browser-extension messaging. DOM content is used for fallback and duplicate detection. It does not require D&D Beyond passwords or Cobalt cookies.
-
-Host access is limited to D&D Beyond, The Forge, and local Foundry addresses listed in `chrome-extension/manifest.json`. Review that file before adding any additional hosts.
+The module and optional Cloud Relay share [protocol version 1](docs/relay-protocol.md). The module rejects missing or incompatible protocol handshakes; deploy compatible module and relay releases together.
 
 ## Compatibility
 
-- **Browser extension:** Manifest V3 for Chrome/Edge.
-- **Foundry VTT:** package metadata specifies Foundry 11 as the minimum and Foundry 13 as the verified version.
-- **D&D Beyond:** behavior depends on the current rendered game-log interface.
+| Component | Supported / tested |
+|---|---|
+| Foundry VTT | 12+; verified on 14 |
+| Game system | dnd5e |
+| Browser extension | Chrome / Edge, Manifest V3; Chrome 111+ |
+| D&D Beyond | Current game-log interface and event format |
+| Cloud Relay | Protocol 1; optional separately deployed service |
 
-The module has not been exhaustively validated across every Foundry version or system. Before relying on it in a session, test the roll types and browser/tab arrangement your table uses.
+D&D Beyond may change its WebSocket event format or rendered game-log interface. Test the roll types and browser/tab arrangement used by your table before relying on an update in a live session.
 
-## Version history
+## Privacy and permissions
 
-See the [changelog](CHANGELOG.md) for release notes.
+The extension observes completed roll events on D&D Beyond and routes supported roll data to Foundry. It does not collect D&D Beyond passwords. The optional Cloud Relay path is different: it requires a CobaltSession cookie, which grants access to your D&D Beyond session. The relay uses that cookie only to exchange for a short-lived token and keeps the cookie in server memory for the active session.
 
-## Support and bug reports
+Review `chrome-extension/manifest.json` for browser host permissions. Do not post credentials, cookies, session tokens, or private game data in public issues.
 
-If something isn't working, [open an issue on GitHub](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/issues) and include:
+## Changelog and support
 
-- Browser and Foundry versions.
-- The roll type and what you expected to happen.
-- Whether rolls were rapid or multiple tabs were open.
-- Relevant extension-popup counters and diagnostics.
-
-Please avoid posting passwords, cookies, session tokens, or other private account data.
+See [CHANGELOG.md](CHANGELOG.md) for version history. To report a bug, [open a GitHub issue](https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/issues) with your browser, Foundry, and dnd5e versions, the roll type, and relevant non-sensitive diagnostics.
 
 ## License
 
-See [LICENSE](LICENSE) for the project's license terms.
+See [LICENSE](LICENSE) for license terms.

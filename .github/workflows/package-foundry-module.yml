@@ -19,23 +19,44 @@ jobs:
         id: version
         run: |
           version="$(jq -r .version foundry-module/ddb-direct-roll-bridge/module.json)"
-          tag="${GITHUB_REF_NAME}"
-          if [ "$tag" != "v$version" ]; then
-            echo "Tag $tag does not match module version $version" >&2
+          tag="${GITHUB_REF_NAME#v}"
+          base_tag="${tag%%-rc.*}"
+          if [ "$tag" != "$version" ] && [ "$base_tag" != "$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match module version $version" >&2
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Validate manifests and JavaScript
+        run: |
+          jq -e '.version == "${{ steps.version.outputs.version }}"' foundry-module/ddb-direct-roll-bridge/module.json
+          jq -e '.version == "${{ steps.version.outputs.version }}"' chrome-extension/manifest.json
+          find chrome-extension foundry-module -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Select relay endpoint for release channel
+        run: |
+          if [[ "$GITHUB_REF_NAME" == *-rc* ]]; then
+            sed -i 's#const RELAY_URL = "https://ddb-cloud-relay-tkqqv2yyqq-ue.a.run.app";#const RELAY_URL = "https://github-test---ddb-cloud-relay-tkqqv2yyqq-ue.a.run.app";#' foundry-module/ddb-direct-roll-bridge/scripts/relay.js
+            grep -q 'github-test---ddb-cloud-relay-tkqqv2yyqq-ue.a.run.app' foundry-module/ddb-direct-roll-bridge/scripts/relay.js
+          fi
+
       - name: Package Foundry module
         run: |
           cd foundry-module
-          zip -r ../ddb-direct-roll-bridge.zip ddb-direct-roll-bridge
+          zip -r ../ddb-direct-roll-bridge-v${{ steps.version.outputs.version }}.zip ddb-direct-roll-bridge
+          cp ddb-direct-roll-bridge/module.json ../module.json
+          cd ..
+          jq --arg tag "$GITHUB_REF_NAME" --arg version "${{ steps.version.outputs.version }}" '.download = "https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/releases/download/" + $tag + "/ddb-direct-roll-bridge-v" + $version + ".zip"' module.json > module.json.tmp
+          mv module.json.tmp module.json
 
-      - name: Publish release and ZIP
+      - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: DDB Direct Roll Bridge v${{ steps.version.outputs.version }}
-          body: Install this release through Foundry using the stable module manifest URL.
-          files: ddb-direct-roll-bridge.zip
-          make_latest: true
+          name: DDB Direct Roll Bridge v${{ steps.version.outputs.version }} (${{ github.ref_name }})
+          body: "DDB Direct Roll Bridge ${{ github.ref_name }}. See CHANGELOG.md for release details."
+          files: |
+            ddb-direct-roll-bridge-v${{ steps.version.outputs.version }}.zip
+            module.json
+          prerelease: ${{ contains(github.ref_name, '-rc') }}
+          make_latest: ${{ !contains(github.ref_name, '-rc') }}

@@ -27,7 +27,7 @@
         tag: "form",
         window: { title: "D&D Beyond Character Mappings", icon: "fa-solid fa-link" },
         position: { width: 680, height: "auto" },
-        form: { handler: this.#onSubmit, closeOnSubmit: true },
+        form: { handler: this.#onSubmit, closeOnSubmit: false },
         actions: {
           addMapping: this.#addMapping,
           removeMapping: this.#removeMapping
@@ -110,11 +110,12 @@
             ui.notifications.error("Each mapping needs both a D&D Beyond character ID and a Foundry actor.");
             return;
           }
-          if (!/^[0-9]+$/.test(ddbId)) {
-            ui.notifications.error(`D&D Beyond character ID "${ddbId}" must contain digits only.`);
+          const characterId = parseCharacterId(ddbId);
+          if (!characterId) {
+            ui.notifications.error("Enter a numeric D&D Beyond character ID or a character-sheet URL.");
             return;
           }
-          if (Object.hasOwn(mappings, ddbId)) {
+          if (Object.hasOwn(mappings, characterId)) {
             ui.notifications.error(`D&D Beyond character ID "${ddbId}" is listed more than once.`);
             return;
           }
@@ -122,17 +123,19 @@
             ui.notifications.error("Each Foundry actor can only be assigned to one D&D Beyond character.");
             return;
           }
-          mappings[ddbId] = actorId;
+          mappings[characterId] = actorId;
           actorIds.add(actorId);
         }
         await game.settings.set(MODULE_ID, SETTING_KEY, mappings);
         ui.notifications.info(`Saved ${Object.keys(mappings).length} D&D Beyond character mapping(s).`);
+        await this.close();
       }
 
       _onRender(context, options) {
         super._onRender(context, options);
         const container = this.element.querySelector(".ddb-mapping-rows");
         if (!container) return;
+        container.replaceChildren();
         for (const row of context.rows) {
           this.constructor.#addRow(container, context.actors, row.ddbId, row.actorId);
         }

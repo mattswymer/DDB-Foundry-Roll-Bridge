@@ -1,0 +1,45 @@
+name: Bridge CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - "release/**"
+    paths:
+      - "chrome-extension/**"
+      - "foundry-module/**"
+      - "tests/**"
+      - "README.md"
+      - "CHANGELOG.md"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    paths:
+      - "chrome-extension/**"
+      - "foundry-module/**"
+      - "tests/**"
+      - "README.md"
+      - "CHANGELOG.md"
+      - ".github/workflows/ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check JavaScript syntax
+        run: |
+          find chrome-extension foundry-module -name '*.js' -print0 | xargs -0 -n1 node --check
+      - name: Validate manifests
+        run: |
+          jq -e '.id == "ddb-direct-roll-bridge" and .version == "1.1.0" and .compatibility.minimum == "12" and .compatibility.verified == "14"' foundry-module/ddb-direct-roll-bridge/module.json
+          jq -e '.manifest_version == 3 and .version == "1.1.0" and .minimum_chrome_version == "111"' chrome-extension/manifest.json
+          test "$(jq -r .version foundry-module/ddb-direct-roll-bridge/module.json)" = "$(jq -r .version chrome-extension/manifest.json)"
+      - name: Run coordinator tests
+        run: node --test tests/*.test.js

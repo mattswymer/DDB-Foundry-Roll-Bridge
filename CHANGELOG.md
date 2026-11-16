@@ -4,6 +4,27 @@ All notable changes to DDB Direct Roll Bridge are documented here.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-15
+
+- Restore the Cloud Relay stream after a Foundry world reload when an active session exists.
+- Reattach to an already-active campaign session instead of creating a conflicting session; confirm before switching campaigns.
+- Handle relay protocol compatibility, expired D&D Beyond login notices, and terminal WebSocket close codes.
+- Preserve campaign profile identity when names or game IDs are edited and validate unique numeric game IDs.
+- Accept D&D Beyond character-sheet URLs in actor mappings and keep the mapping form open when validation fails.
+- Prevent duplicate in-flight roll events from being acknowledged as completed and only mark rolls seen after a chat message is created.
+- Align Foundry compatibility metadata with ApplicationV2 (Foundry 12+) and verify against Foundry 14.
+
+## [1.0.9] - 2026-11-14
+
+- Persist the Cloud Relay admin key and D&D Beyond CobaltSession in local Foundry client settings so they survive reloads without being shared through world settings.
+- Normalize typographic apostrophes and quotation marks when matching D&D Beyond action names to Foundry items.
+- Prefer the uniquely named Attack activity when a weapon has multiple attack activities, fixing native attack and damage processing for weapons with restricted attack variants.
+
+## [1.0.8] - 2026-11-14
+
+- Add optional D&D Beyond Cloud Relay integration with campaign profile management.
+
+
 ## [1.0.7] - 2026-11-12
 
 - Coordinate each completed WebSocket roll with both D&D Beyond popup and chat-log DOM surfaces, preserving FIFO matching for rapid repeated rolls.
