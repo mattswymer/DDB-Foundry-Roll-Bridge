@@ -411,9 +411,15 @@
       if (!adminKey) return;
       try {
         const status = await api("/api/status");
-        if (status.active) {
+        const activeProfileId = game.settings.get(MODULE_ID, ACTIVE_PROFILE_KEY) || "";
+        const profiles = game.settings.get(MODULE_ID, PROFILES_KEY) || [];
+        const activeProfile = profiles.find(profile => profile.id === activeProfileId);
+        if (status.active && activeProfile && String(status.gameId) === String(activeProfile.gameId)) {
           connectStream();
           notifyStatus(`Reattaching to active relay session — game ${status.gameId}`);
+        } else if (status.active) {
+          disconnectStream();
+          notifyStatus(`Relay is active for game ${status.gameId}, but the selected campaign does not match. Check campaign settings before connecting.`);
         } else {
           disconnectStream();
           notifyStatus("No active relay session. Start one in module settings.");
