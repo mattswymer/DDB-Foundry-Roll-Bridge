@@ -1,6 +1,6 @@
 (() => {
   const MODULE_ID = "ddb-direct-roll-bridge";
-  const MODULE_VERSION = "1.0.9";
+  const MODULE_VERSION = game.modules.get(MODULE_ID)?.version || "1.1.0";
   const seen = new Set();
   const processing = new Set();
   const latestAttackContexts = new Map();
@@ -719,29 +719,36 @@
       emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", { ok: false, reason: "missing-roll-id", at: Date.now() });
       return;
     }
-    if (!remember(roll.id)) {
+    if (seen.has(roll.id)) {
       emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", { ok: true, duplicate: true, id: roll.id, at: Date.now() });
       return;
     }
-    const message = await ChatMessage.create({
-      speaker: getSpeaker(roll.character),
-      content: buildContent(roll),
-      flags: {
-        [MODULE_ID]: {
-          ddbRollId: roll.id,
-          source: "ddb-direct-extension",
-          raw: roll
+    if (processing.has(roll.id)) return;
+    processing.add(roll.id);
+    try {
+      const message = await ChatMessage.create({
+        speaker: getSpeaker(roll.character),
+        content: buildContent(roll),
+        flags: {
+          [MODULE_ID]: {
+            ddbRollId: roll.id,
+            source: "ddb-direct-extension",
+            raw: roll
+          }
         }
-      }
-    });
-    emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", { ok: true, id: roll.id, messageId: message?.id || null, at: Date.now() });
+      });
+      remember(roll.id);
+      emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", { ok: true, id: roll.id, messageId: message?.id || null, at: Date.now() });
+    } finally {
+      processing.delete(roll.id);
+    }
   }
 
   async function handleWebSocketRoll(event) {
     const id = event?.data?.rollId || null;
-    let remembered = false;
     try {
       if (!id) throw new Error("WebSocket event is missing rollId");
+      if (processing.has(id)) return;
 
       const existing = findExistingMessage(id);
       if (existing) {
@@ -756,12 +763,12 @@
         emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", { ok: true, duplicate: true, id, at: Date.now() });
         return;
       }
-      remembered = remember(id);
       processing.add(id);
 
       const result = await postNativeEvent(event);
       if (!result?.message?.id) throw new Error("Native roll processing returned without creating a chat message");
       processing.delete(id);
+      remember(id);
 
       emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
         ok: true, id, messageId: result.message.id,
@@ -788,6 +795,7 @@
       const existing = id ? findExistingMessage(id) : null;
       if (existing) {
         remember(id);
+        if (id) processing.delete(id);
         emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
           ok: true, id, messageId: existing.id, native: true,
           partialNative: true, reason, at: Date.now()
@@ -819,7 +827,6 @@
       }
 
       if (id) processing.delete(id);
-      if (id && remembered) seen.delete(id);
       emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
         ok: false, id, reason, native: true, at: Date.now()
       });
