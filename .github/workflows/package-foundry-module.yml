@@ -33,6 +33,13 @@ jobs:
           jq -e '.version == "${{ steps.version.outputs.version }}"' chrome-extension/manifest.json
           find chrome-extension foundry-module -name '*.js' -print0 | xargs -0 -n1 node --check
 
+      - name: Select relay endpoint for release channel
+        run: |
+          if [[ "$GITHUB_REF_NAME" == *-rc* ]]; then
+            sed -i 's#const RELAY_URL = "https://ddb-cloud-relay-tkqqv2yyqq-ue.a.run.app";#const RELAY_URL = "https://github-test---ddb-cloud-relay-tkqqv2yyqq-ue.a.run.app";#' foundry-module/ddb-direct-roll-bridge/scripts/relay.js
+            grep -q 'github-test---ddb-cloud-relay-tkqqv2yyqq-ue.a.run.app' foundry-module/ddb-direct-roll-bridge/scripts/relay.js
+          fi
+
       - name: Package Foundry module
         run: |
           cd foundry-module
