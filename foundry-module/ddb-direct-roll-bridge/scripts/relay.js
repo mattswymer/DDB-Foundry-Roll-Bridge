@@ -12,10 +12,13 @@
   let reconnectTimer = null;
   let reconnectDelay = 2000;
   let shouldReconnect = false;
+  let reauthRequired = false;
+  let lastStatus = "Not connected";
 
   function notifyStatus(message) {
+    lastStatus = String(message || "Not connected");
     document.querySelector(".ddb-relay-status")?.replaceChildren(
-      document.createTextNode(message)
+      document.createTextNode(lastStatus)
     );
   }
 
@@ -56,6 +59,7 @@
     if (!game.user?.isGM || !adminKey) return;
     disconnectStream();
     shouldReconnect = true;
+    reauthRequired = false;
     reconnectDelay = 2000;
 
     const open = () => {
@@ -77,14 +81,34 @@
 
         if (message.type === "status") {
           if (message.status === "stream-ready") {
+            if (Number(message.protocol) < MIN_PROTOCOL) {
+              shouldReconnect = false;
+              notifyStatus("Relay protocol is unsupported. Update the Cloud Relay.");
+              ws.close(1002, "Unsupported relay protocol");
+              return;
+            }
             reconnectDelay = 2000;
-            notifyStatus(`Connected — game ${message.gameId}`);
+            notifyStatus(`Connected — game ${message.gameId} (relay ${message.relayVersion || "unknown"})`);
           } else if (message.status === "ddb-connected") {
             notifyStatus("Connected to D&D Beyond");
+          } else if (message.status === "reauth-required") {
+            reauthRequired = true;
+            shouldReconnect = false;
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+            notifyStatus("D&D Beyond login expired. Update the saved login cookie.");
+          } else if (message.status === "token-refreshed") {
+            notifyStatus("D&D Beyond login refreshed.");
+          } else if (message.status === "ddb-disconnected") {
+            notifyStatus("D&D Beyond disconnected; relay is retrying.");
           }
           return;
         }
 
+        if (message.type === "error") {
+          notifyStatus(message.message || "Relay reported an error.");
+          return;
+        }
         const payload = message.payload;
         if (message.type !== "ddb-event") return;
         if (payload?.eventType !== "dice/roll/fulfilled") return;
@@ -96,9 +120,16 @@
         ));
       });
 
-      ws.addEventListener("close", () => {
-        if (socket !== ws || !shouldReconnect) return;
+      ws.addEventListener("close", event => {
+        if (socket !== ws) return;
         socket = null;
+        if (!shouldReconnect || reauthRequired) return;
+        const terminal = { 1000: "Relay session stopped.", 1002: "Relay protocol mismatch. Update the module and relay together.", 4400: "Relay rejected a malformed message.", 4401: "Relay authentication timed out. Reconnect when ready.", 4402: "No active relay session. Start one in module settings.", 4403: "Relay admin key rejected. Check the saved admin key." };
+        if (terminal[event.code]) {
+          shouldReconnect = false;
+          notifyStatus(terminal[event.code]);
+          return;
+        }
         notifyStatus("Disconnected; reconnecting…");
         reconnectTimer = setTimeout(open, reconnectDelay);
         reconnectDelay = Math.min(reconnectDelay * 2, 30000);
