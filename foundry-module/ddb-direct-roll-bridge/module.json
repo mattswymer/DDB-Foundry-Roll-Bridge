@@ -27,7 +27,7 @@
   "styles": [
     "styles/roll-card.css"
   ],
-  "download": "https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/releases/download/v1.1.0/ddb-direct-roll-bridge-v1.1.0.zip",
+  "download": "https://github.com/mattswymer/DDB-Foundry-Roll-Bridge/releases/download/v1.1.1/ddb-direct-roll-bridge-v1.1.1.zip",
   "relationships": {
     "systems": [
       {
