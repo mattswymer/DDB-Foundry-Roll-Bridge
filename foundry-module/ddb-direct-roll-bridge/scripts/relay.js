@@ -1,6 +1,7 @@
 (() => {
   const MODULE_ID = "ddb-direct-roll-bridge";
-  const RELAY_URL = "https://ddb-cloud-relay-89085265232.us-east1.run.app";
+  const RELAY_URL = "https://ddb-cloud-relay-tkqqv2yyqq-ue.a.run.app";
+  const MIN_PROTOCOL = 1;
   const PROFILES_KEY = "campaignProfiles";
   const ACTIVE_PROFILE_KEY = "activeCampaignProfile";
   const ADMIN_KEY_SETTING = "relayAdminKey";
