@@ -106,6 +106,10 @@ See the [DDB Cloud Relay repository](https://github.com/mattswymer/DDB-Cloud-Rel
 
 Update the saved CobaltSession cookie in the Cloud Relay settings and start a new session. Do not share the cookie with anyone.
 
+## Relay protocol
+
+The module and optional Cloud Relay share [protocol version 1](docs/relay-protocol.md). The module rejects missing or incompatible protocol handshakes; deploy compatible module and relay releases together.
+
 ## Compatibility
 
 | Component | Supported / tested |
