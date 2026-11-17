@@ -24,7 +24,7 @@ Roll on D&D Beyond and see the result appear in Foundry VTT chat. The project co
 - Captures completed D&D Beyond game-log roll events.
 - Reconstructs supported attacks, ability checks, saving throws, initiative, damage, and healing as native D&D 5e chat messages.
 - Preserves D&D Beyond's actual die results, including advantage and disadvantage d20 results.
-- Mirrors standalone custom dice-roller rolls, including arbitrary dice such as d100, with a generic Foundry chat card when no character-sheet action exists. Completed custom rolls are forwarded even when D&D Beyond marks them as non-persistent.
+- Mirrors standalone custom dice-roller rolls, including arbitrary dice such as d100, with a generic Foundry chat card when no character-sheet action exists. Standalone custom rolls (`action: custom`, `rollType: roll`) are handled explicitly as generic Foundry chat cards.
 - Coordinates WebSocket and DOM delivery to suppress duplicate cards and retain a fallback path.
 - Routes rolls to an eligible Foundry GM tab and supports actor mapping by D&D Beyond character ID.
 - Provides an optional Cloud Relay connection with reconnect handling and session reattachment after a Foundry reload.
