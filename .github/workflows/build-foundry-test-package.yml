@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - "foundry-module/**"
+      - "chrome-extension/**"
       - ".github/workflows/build-foundry-test-package.yml"
 
 permissions:
@@ -21,10 +22,14 @@ jobs:
         run: |
           cd foundry-module
           zip -r ../ddb-direct-roll-bridge-test.zip ddb-direct-roll-bridge
+          cd ..
+          zip -r ddb-direct-roll-bridge-extension-test.zip chrome-extension
 
       - name: Upload test package
         uses: actions/upload-artifact@v4
         with:
           name: ddb-direct-roll-bridge-test
-          path: ddb-direct-roll-bridge-test.zip
+          path: |
+            ddb-direct-roll-bridge-test.zip
+            ddb-direct-roll-bridge-extension-test.zip
           retention-days: 14
