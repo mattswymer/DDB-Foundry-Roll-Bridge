@@ -111,7 +111,8 @@ test('standalone custom d100 roll creates one Foundry fallback card without an a
   assert.equal(message.flags['ddb-direct-roll-bridge'].ddbRollId, 'custom-d100-001');
   assert.equal(message.flags['ddb-direct-roll-bridge'].fallback, true);
   assert.equal(message.flags['ddb-direct-roll-bridge'].source, 'ddb-websocket-fallback');
-  assert.equal(h.acknowledgements.filter(ack => ack.ok).length, 1);
+  assert.equal(h.acknowledgements.filter(ack => ack.ok).length, 2);
+  assert.equal(h.acknowledgements[1].duplicate, true);
 });
 
 test('malformed custom dice data is not turned into an empty fallback card', async () => {
