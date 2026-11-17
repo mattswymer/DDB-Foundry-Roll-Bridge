@@ -9,14 +9,14 @@ let createMockChatMessage;
 class MockRoll {
   constructor(formula, data = {}) {
     this.formula = formula; this.data = data;
-    this.terms = [...formula.matchAll(/(\\d*)d(\\d+)(kh1|kl1)?/gi)].map(m => ({ class:"Die", number:Number(m[1]||1), faces:Number(m[2]), results:[], evaluated:false }));
+    this.terms = [...formula.matchAll(/(\d*)d(\d+)(kh1|kl1)?/gi)].map(m => ({ class:"Die", number:Number(m[1]||1), faces:Number(m[2]), results:[], evaluated:false }));
     this.total = null; this.evaluated = false;
   }
   toJSON() { return { class:"Roll", formula:this.formula, terms:this.terms.map(t=>({...t,results:[...t.results]})), options:{}, evaluated:this.evaluated, total:this.total }; }
   static fromData(data) {
     const roll = new MockRoll(data.formula); roll.terms=data.terms; roll.evaluated=data.evaluated;
     const dice = roll.terms.reduce((s,t)=>s+t.results.filter(r=>r.active!==false).reduce((n,r)=>n+r.result,0),0);
-    const constants = data.formula.replace(/\\d*d\\d+(?:kh1|kl1)?/gi,"").replace(/\\s+/g,"") || "0";
+    const constants = data.formula.replace(/\d*d\d+(?:kh1|kl1)?/gi,"").replace(/\s+/g,"") || "0";
     roll.total = dice + Function("return ("+constants+")")(); return roll;
   }
   async toMessage(messageData, options={}) {
