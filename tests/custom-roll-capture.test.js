@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-test('forwards a fulfilled standalone custom roll with D&D Beyond's confirmed persist flag', () => {
+test("forwards a fulfilled standalone custom roll with D&D Beyond's confirmed persist flag", () => {
   const posted = [];
   const listeners = new Map();
 
