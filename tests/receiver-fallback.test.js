@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-class MockRoll {
+let createMockChatMessage;\n\nclass MockRoll {
   constructor(formula, data = {}) {
     this.formula = formula; this.data = data;
     this.terms = [...formula.matchAll(/(\\d*)d(\\d+)(kh1|kl1)?/gi)].map(m => ({ class:"Die", number:Number(m[1]||1), faces:Number(m[2]), results:[], evaluated:false }));
@@ -18,7 +18,7 @@ class MockRoll {
     roll.total = dice + Function("return ("+constants+")")(); return roll;
   }
   async toMessage(messageData, options={}) {
-    return globalThis.__createChatMessage({...messageData,content:`<div class="dice-roll"><div class="dice-formula">${this.formula}</div><div class="dice-total">${this.total}</div></div>`,roll:this,create:options.create});
+    return createMockChatMessage({...messageData,content:`<div class="dice-roll"><div class="dice-formula">${this.formula}</div><div class="dice-total">${this.total}</div></div>`,roll:this,create:options.create});
   }
 }
 
@@ -77,7 +77,7 @@ function setupReceiver() {
     Math,
     Promise
   };
-  sandbox.__createChatMessage = async data => { const message = { id: `message-${messages.length+1}`, ...data }; messages.push(message); return message; };
+  createMockChatMessage = async data => { const message = { id: `message-${messages.length+1}`, ...data }; messages.push(message); return message; };
   sandbox.Roll = MockRoll;
   vm.runInNewContext(
     fs.readFileSync(path.join(__dirname, '../foundry-module/ddb-direct-roll-bridge/scripts/receiver.js'), 'utf8'),
