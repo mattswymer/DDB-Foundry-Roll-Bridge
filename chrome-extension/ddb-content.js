@@ -756,6 +756,13 @@
     if (seenWebSocketRollIds.size > 300) seenWebSocketRollIds.delete(seenWebSocketRollIds.values().next().value);
     const firstRoll = payload.data?.rolls?.[0];
     const rollType = String(firstRoll?.rollType || "").toLowerCase();
+    const isCustomDiceRoll = rollType === "roll" &&
+      String(payload.data?.action || "").trim().toLowerCase() === "custom";
+    if (isCustomDiceRoll) {
+      console.info("[DDB Roll Bridge] Custom roll reached DDB content script", {
+        rollId, total: firstRoll?.result?.total, messageScope: payload.messageScope
+      });
+    }
     const isNativeType = ["to hit", "check", "save", "damage", "heal"].includes(rollType) ||
       (rollType === "roll" && /initiative/i.test(String(payload.data?.action || "")));
 
