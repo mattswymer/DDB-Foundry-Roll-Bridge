@@ -185,7 +185,7 @@
     for (const set of sets) {
       const dieType = String(set?.dieType || "").toLowerCase();
       const count = Number(set?.count || set?.dice?.length || 0);
-      if (!/^d\\d+$/.test(dieType) || !Number.isInteger(count) || count < 1) {
+      if (!/^d\d+$/.test(dieType) || !Number.isInteger(count) || count < 1) {
         throw new Error("Custom roll contains an invalid die type or count");
       }
       let part = `${count}${dieType}`;
@@ -207,7 +207,7 @@
     const constant = Number(notation.constant ?? result.constant ?? 0);
     if (!Number.isFinite(constant)) throw new Error("Custom roll has an invalid constant modifier");
     if (constant !== 0) formulaParts.push(String(constant));
-    const formula = formulaParts.join(" + ").replace(/\\+ -/g, "-");
+    const formula = formulaParts.join(" + ").replace(/\+ -/g, "-");
 
     let rollData = {};
     try {
