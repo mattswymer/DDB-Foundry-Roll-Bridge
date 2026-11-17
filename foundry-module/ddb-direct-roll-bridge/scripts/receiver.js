@@ -96,7 +96,7 @@
     return sets.every(set => {
       const dieType = String(set?.dieType || "");
       const count = Number(set?.count || set?.dice?.length || 0);
-      return /^d\\d+$/i.test(dieType) && Number.isInteger(count) && count > 0;
+      return /^d\d+$/i.test(dieType) && Number.isInteger(count) && count > 0;
     });
   }
 
