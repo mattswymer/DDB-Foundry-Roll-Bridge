@@ -779,6 +779,35 @@
       }
       processing.add(id);
 
+      const source = event?.data?.rolls?.[0];
+      const isCustomDiceRoll =
+        String(source?.rollType || "").toLowerCase() === "roll" &&
+        String(event?.data?.action || "").trim().toLowerCase() === "custom";
+
+      if (isCustomDiceRoll) {
+        if (!isFallbackEligibleEvent(event)) {
+          throw new Error("Standalone custom dice roll has incomplete or invalid dice results");
+        }
+        log("Received standalone D&D Beyond custom dice roll", {
+          id,
+          dice: source.diceNotation.set.map(set => ({
+            count: Number(set.count || set.dice?.length || 0),
+            dieType: String(set.dieType || "")
+          })),
+          total: source.result.total
+        });
+        const fallback = await postFallbackCard(event, "Standalone D&D Beyond custom dice roll");
+        processing.delete(id);
+        remember(id);
+        emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
+          ok: true, id, messageId: fallback.id, fallback: true, custom: true, at: Date.now()
+        });
+        log("Posted standalone custom dice roll to Foundry chat", {
+          id, messageId: fallback.id, total: source.result.total
+        });
+        return;
+      }
+
       const result = await postNativeEvent(event);
       if (!result?.message?.id) throw new Error("Native roll processing returned without creating a chat message");
       processing.delete(id);
