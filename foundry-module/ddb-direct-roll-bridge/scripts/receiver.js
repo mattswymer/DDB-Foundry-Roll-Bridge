@@ -139,7 +139,9 @@
       diceSummary: diceParts.join("; "),
       dice: sets.map(set => ({ count: Number(set.count || set.dice?.length || 0) })),
       total,
-      rawText: `Native Foundry processing failed: ${String(reason || "unknown error")}`
+      rawText: reason === "Standalone D&D Beyond custom dice roll"
+        ? "Standalone custom dice roll captured from D&D Beyond."
+        : `Native Foundry processing failed: ${String(reason || "unknown error")}`
     };
   }
 
