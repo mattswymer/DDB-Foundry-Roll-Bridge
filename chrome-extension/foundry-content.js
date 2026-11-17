@@ -230,6 +230,11 @@
         return true;
       }
       const forwarded = forwardToFoundryPage({ id: rollId, _ddbWebSocketEvent: event });
+      if (String(event?.data?.action || "").trim().toLowerCase() === "custom") {
+        console.info("[DDB Roll Bridge] Foundry content script received custom roll", {
+          rollId, forwarded, foundryDetected: isFoundry, moduleReady, isGM
+        });
+      }
       sendResponse({ ok: forwarded, foundryDetected: isFoundry, moduleReady, isGM });
       return true;
     }
