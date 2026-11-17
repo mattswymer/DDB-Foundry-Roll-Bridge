@@ -48,7 +48,7 @@ function setupReceiver() {
         return message;
       }
     },
-    console: { debug() {}, warn() {}, error() {} },
+    console: { debug() {}, info() {}, warn() {}, error() {} },
     Date,
     Set,
     Map,
