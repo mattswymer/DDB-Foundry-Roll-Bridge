@@ -79,11 +79,25 @@
     return game.messages.find(message => message.getFlag?.(MODULE_ID, "ddbRollId") === id) || null;
   }
 
-  function isNativeRollEvent(event) {
+  function isFallbackEligibleEvent(event) {
+    // The standalone D&D Beyond dice roller does not have a character-sheet
+    // action to map. Accept any fulfilled roll with a complete, safe dice
+    // result so unsupported/custom roll types still reach Foundry chat.
+    if (event?.eventType !== "dice/roll/fulfilled" || !event?.data?.rollId) return false;
+
     const source = event?.data?.rolls?.[0];
-    const type = String(source?.rollType || "").toLowerCase();
-    return ["to hit", "check", "save", "damage", "heal"].includes(type) ||
-      (type === "roll" && /initiative/i.test(String(event?.data?.action || "")));
+    const sets = source?.diceNotation?.set;
+    const values = source?.result?.values;
+    const total = source?.result?.total;
+    if (!Array.isArray(sets) || !sets.length || !Array.isArray(values) || !values.length) return false;
+    if (total === null || total === undefined || !Number.isFinite(Number(total))) return false;
+    if (!values.every(value => Number.isFinite(Number(value)))) return false;
+
+    return sets.every(set => {
+      const dieType = String(set?.dieType || "");
+      const count = Number(set?.count || set?.dice?.length || 0);
+      return /^d\\d+$/i.test(dieType) && Number.isInteger(count) && count > 0;
+    });
   }
 
   function buildFallbackRoll(event, reason) {
@@ -803,7 +817,7 @@
         return;
       }
 
-      if (isNativeRollEvent(event)) {
+      if (isFallbackEligibleEvent(event)) {
         try {
           const fallback = await postFallbackCard(event, reason);
           remember(id);
