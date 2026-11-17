@@ -4,6 +4,12 @@ All notable changes to DDB Direct Roll Bridge are documented here.
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-11-16
+
+- Route standalone D&D Beyond custom dice rolls to a generic Foundry chat fallback when they cannot be reconstructed as native D&D5e actions.
+- Validate fulfilled roll IDs, dice notation, die types, results, and totals before creating fallback cards; retain duplicate protection.
+
+
 ## [1.1.1] - 2026-11-16
 
 - Prevent receiver startup from crashing when Foundry has not initialized `game.modules` while module scripts are evaluated.
