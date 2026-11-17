@@ -16,8 +16,8 @@ class MockRoll {
   static fromData(data) {
     const roll = new MockRoll(data.formula); roll.terms=data.terms; roll.evaluated=data.evaluated;
     const dice = roll.terms.reduce((s,t)=>s+t.results.filter(r=>r.active!==false).reduce((n,r)=>n+r.result,0),0);
-    const constants = data.formula.replace(/\d*d\d+(?:kh1|kl1)?/gi,"").replace(/\s+/g,"") || "0";
-    roll.total = dice + Function("return ("+constants+")")(); return roll;
+    const constants = data.formula.replace(/\d*d\d+(?:kh1|kl1)?/gi, "").match(/-?\d+/g) || [];
+    roll.total = dice + constants.map(Number).reduce((sum, value) => sum + value, 0); return roll;
   }
   async toMessage(messageData, options={}) {
     return createMockChatMessage({...messageData,content:`<div class="dice-roll"><div class="dice-formula">${this.formula}</div><div class="dice-total">${this.total}</div></div>`,roll:this,create:options.create});
@@ -163,7 +163,7 @@ test('standalone custom mixed dice roll preserves both dice sets and total', asy
   await h.send(event);
 
   assert.equal(h.messages.length, 1);
-  assert.match(h.messages[0].content, /1d6 \\+ 1d4/);
+  assert.ok(h.messages[0].content.includes('1d6 + 1d4'));
   assert.match(h.messages[0].content, />7</);
   assert.equal(h.messages[0].roll.formula, '1d6 + 1d4');
   assert.deepEqual(h.messages[0].roll.terms.map(term => term.results[0].result), [4, 3]);
