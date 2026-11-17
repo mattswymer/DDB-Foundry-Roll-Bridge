@@ -8,9 +8,9 @@
 
 Roll on D&D Beyond and see the result appear in Foundry VTT chat. The project consists of a Foundry module and a Chrome/Edge extension. An optional D&D Beyond Cloud Relay can deliver completed game-log events directly to the Foundry module without relying on the browser extension's WebSocket capture path.
 
-**Version:** 1.1.1  
+**Version:** 1.1.2 (development)  
 **Package:** Foundry VTT module + Manifest V3 browser extension  
-**Status:** v1.1.1 validated in a live Foundry session; Cloud Relay production promotion and stable release packaging remain.
+**Status:** v1.1.2 custom-roll fix under automated and live Foundry validation; v1.1.1 remains the latest stable release.
 
 ## Project links
 
@@ -24,11 +24,12 @@ Roll on D&D Beyond and see the result appear in Foundry VTT chat. The project co
 - Captures completed D&D Beyond game-log roll events.
 - Reconstructs supported attacks, ability checks, saving throws, initiative, damage, and healing as native D&D 5e chat messages.
 - Preserves D&D Beyond's actual die results, including advantage and disadvantage d20 results.
+- Mirrors standalone custom dice-roller rolls, including arbitrary dice such as d100, with a generic Foundry chat card when no character-sheet action exists.
 - Coordinates WebSocket and DOM delivery to suppress duplicate cards and retain a fallback path.
 - Routes rolls to an eligible Foundry GM tab and supports actor mapping by D&D Beyond character ID.
 - Provides an optional Cloud Relay connection with reconnect handling and session reattachment after a Foundry reload.
 
-The module mirrors roll results. It does not synchronize characters, automatically apply damage or healing, or integrate with Midi-QOL. Attack resolution and damage application remain part of the normal Foundry workflow. Some complex dice expressions and item/activity configurations may use the diagnostic fallback card rather than a native system roll.
+The module mirrors roll results. It does not synchronize characters, automatically apply damage or healing, or integrate with Midi-QOL. Attack resolution and damage application remain part of the normal Foundry workflow. Standalone custom dice rolls and complex expressions use a generic result card when no native D&D5e action can be reconstructed.
 
 ## Requirements
 
