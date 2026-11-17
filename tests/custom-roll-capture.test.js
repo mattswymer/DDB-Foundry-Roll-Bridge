@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-test('forwards a fulfilled standalone custom roll even when persist is false', () => {
+test('forwards a fulfilled standalone custom roll with D&D Beyond's confirmed persist flag', () => {
   const posted = [];
   const listeners = new Map();
 
@@ -44,7 +44,7 @@ test('forwards a fulfilled standalone custom roll even when persist is false', (
     eventType: 'dice/roll/fulfilled',
     data: {
       rollId: 'standalone-custom-d100',
-      persist: false,
+      persist: true,
       action: 'Custom Roll',
       rolls: [{
         rollType: 'roll',
@@ -64,6 +64,6 @@ test('forwards a fulfilled standalone custom roll even when persist is false', (
 
   assert.ok(forwarded, 'custom roll should be published to the extension content script');
   assert.equal(forwarded.direction, 'outgoing');
-  assert.equal(forwarded.payload.data.persist, false);
+  assert.equal(forwarded.payload.data.persist, true);
   assert.equal(forwarded.payload.data.rolls[0].result.total, 63);
 });
