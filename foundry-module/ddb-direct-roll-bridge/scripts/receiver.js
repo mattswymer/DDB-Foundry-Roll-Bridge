@@ -266,7 +266,7 @@
     if (event.messageScope === "userId" || event.data.context?.messageScope === "userId") {
       messageData.whisper = ChatMessage.getWhisperRecipients("GM").map(user => user.id);
     }
-    const message = await Roll.toMessage([roll], messageData, { create: true });
+    const message = await roll.toMessage(messageData, { create: true });
     if (!message?.id) throw new Error("Foundry did not create a native custom-roll chat message");
     return { message, roll };
   }
