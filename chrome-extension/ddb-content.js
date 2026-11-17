@@ -765,8 +765,11 @@
     }
     const isNativeType = ["to hit", "check", "save", "damage", "heal"].includes(rollType) ||
       (rollType === "roll" && /initiative/i.test(String(payload.data?.action || "")));
+    // Standalone custom rolls use the generic Foundry fallback, but still need
+    // WebSocket/DOM coordination so D&D Beyond's visible text is not submitted twice.
+    const isCoordinatedType = isNativeType || isCustomDiceRoll;
 
-    if (isNativeType) {
+    if (isCoordinatedType) {
       const wsMatch = {
         total: Number(firstRoll?.result?.total),
         character: cleanText(payload.data?.context?.name).toLowerCase(),
@@ -783,7 +786,7 @@
 
     const sent = sendRuntimeMessage({ type: "DDB_ROLL_BRIDGE_FOUND_WS_ROLL", event: payload }, response => {
       trace("background-routing-response", { rollId, accepted: !!response?.accepted, routed: !!response?.routed, reason: response?.reason || null });
-      if (isNativeType && (!response?.accepted || !response?.routed)) {
+      if (isCoordinatedType && (!response?.accepted || !response?.routed)) {
         coordinator.acknowledge(rollId, false, { reason: response?.reason || "no Foundry destination" });
       }
       if (response?.accepted && response?.routed) {
@@ -792,7 +795,7 @@
         log("WebSocket roll was not routed to Foundry", { rollId, reason: response?.reason || "no Foundry destination" });
       }
     });
-    if (!sent && isNativeType) coordinator.acknowledge(rollId, false, { reason: "extension-message-failed" });
+    if (!sent && isCoordinatedType) coordinator.acknowledge(rollId, false, { reason: "extension-message-failed" });
   });
 
   // Foundry sends a final ACK only after the receiver has created (or failed to create)
