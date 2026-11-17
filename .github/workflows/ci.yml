@@ -39,7 +39,7 @@ jobs:
       - name: Validate manifests
         run: |
           jq -e '.id == "ddb-direct-roll-bridge" and .version == "1.1.2" and .compatibility.minimum == "12" and .compatibility.verified == "14"' foundry-module/ddb-direct-roll-bridge/module.json
-          jq -e '.manifest_version == 3 and .version == "1.1.1" and .minimum_chrome_version == "111"' chrome-extension/manifest.json
+          jq -e '.manifest_version == 3 and .version == "1.1.2" and .minimum_chrome_version == "111"' chrome-extension/manifest.json
           test "$(jq -r .version foundry-module/ddb-direct-roll-bridge/module.json)" = "$(jq -r .version chrome-extension/manifest.json)"
       - name: Run coordinator tests
         run: node --test tests/*.test.js
