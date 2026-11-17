@@ -4,7 +4,9 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-let createMockChatMessage;\n\nclass MockRoll {
+let createMockChatMessage;
+
+class MockRoll {
   constructor(formula, data = {}) {
     this.formula = formula; this.data = data;
     this.terms = [...formula.matchAll(/(\\d*)d(\\d+)(kh1|kl1)?/gi)].map(m => ({ class:"Die", number:Number(m[1]||1), faces:Number(m[2]), results:[], evaluated:false }));
