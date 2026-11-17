@@ -85,7 +85,6 @@ function customD100Event() {
       rollId: 'custom-d100-001',
       action: 'custom',
       context: { entityId: '101018406', name: 'Tyndall', messageScope: 'gameId' },
-      context: {},
       rolls: [{
         rollType: 'roll',
         diceNotation: {
