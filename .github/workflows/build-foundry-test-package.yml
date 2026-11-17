@@ -2,6 +2,10 @@ name: Build Foundry Test Package
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "foundry-module/**"
+      - ".github/workflows/build-foundry-test-package.yml"
 
 permissions:
   contents: read
