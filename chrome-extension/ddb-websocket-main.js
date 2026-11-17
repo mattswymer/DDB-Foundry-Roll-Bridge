@@ -159,10 +159,8 @@
             messageScope: payload.messageScope ?? payload.data?.context?.messageScope ?? null
           });
 
-          // Standalone custom dice rolls can be fulfilled without being
-          // persisted to the D&D Beyond game log. They are still real completed
-          // rolls and must be forwarded to Foundry.
-          if (payload.eventType === "dice/roll/fulfilled" && payload.data?.rollId) {
+          if (payload.eventType === "dice/roll/fulfilled" &&
+              payload.data?.rollId && payload.data?.persist !== false) {
             fulfilledPayload = payload;
           }
         }
