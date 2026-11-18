@@ -64,12 +64,6 @@
       direction,
       payload
     }, window.location.origin);
-    if (String(payload.data?.action || "").toLowerCase() === "custom") {
-      console.info("[DDB Roll Capture] Published standalone custom roll", {
-        direction, rollId, rollType: payload.data?.rolls?.[0]?.rollType,
-        total: payload.data?.rolls?.[0]?.result?.total
-      });
-    }
   }
 
   function inspectMessage(event) {
@@ -165,8 +159,7 @@
             messageScope: payload.messageScope ?? payload.data?.context?.messageScope ?? null
           });
 
-          if (payload.eventType === "dice/roll/fulfilled" &&
-              payload.data?.rollId && payload.data?.persist !== false) {
+          if (payload.eventType === "dice/roll/fulfilled" && payload.data?.persist !== false) {
             fulfilledPayload = payload;
           }
         }
