@@ -49,7 +49,9 @@ The module requires protocol version 1. Unknown, missing, or different protocol 
 }
 ```
 
-The relay forwards upstream game-log events. The Foundry module processes completed `dice/roll/fulfilled` events and deduplicates by `data.rollId`. Deferred events are not posted as completed rolls.
+The relay forwards upstream game-log events without interpreting roll types. The Foundry module processes completed `dice/roll/fulfilled` events and deduplicates by `data.rollId`. Deferred events are not posted as completed rolls.
+
+For standalone custom dice-roller rolls, D&D Beyond identifies the action as `custom` and the roll type as `roll`. The event includes the dice notation and individual die results. The Foundry module validates the notation, die results, and reported total, then reconstructs a native Foundry `Roll` using those exact results. This handling is implemented in the module receiver; no relay protocol or Cloud Relay deployment change is required.
 
 ### Status messages
 
