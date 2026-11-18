@@ -263,11 +263,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
     }
     const existingState = STATE.wsRollStates.get(rollId);
-    const isCustomDiceRoll = String(event?.data?.action || "").trim().toLowerCase() === "custom" &&
-      String(event?.data?.rolls?.[0]?.rollType || "").toLowerCase() === "roll";
-    if (isCustomDiceRoll) console.info("[DDB Roll Bridge] Background received custom roll", {
-      rollId, total: event.data.rolls[0]?.result?.total
-    });
     trace("websocket-roll-received", { rollId, stateExists: !!existingState, state: existingState?.status || null, sourceTabCount: existingState?.sourceTabIds?.size ?? 0 });
     if (existingState) {
       // A second DDB tab may observe the same shared game-log event. It must
@@ -316,9 +311,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         routingState.status = sent > 0 ? "routed" : "failed";
       }
       trace("websocket-route-result", { rollId, sent, status: routingState.status, sourceTabCount: routingState.sourceTabIds.size });
-      if (isCustomDiceRoll) console.info("[DDB Roll Bridge] Custom roll Foundry routing result", {
-        rollId, sent, status: routingState.status, sourceTabCount: routingState.sourceTabIds.size
-      });
       if (sent <= 0) routingState.sourceTabIds.clear();
       const response = {
         ok: true,
