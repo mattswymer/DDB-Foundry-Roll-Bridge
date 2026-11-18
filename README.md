@@ -8,9 +8,9 @@
 
 Roll on D&D Beyond and see the result appear in Foundry VTT chat. The Foundry module can connect directly to the D&D Beyond Cloud Relay, so the normal relay setup does not require a browser extension. A Chrome/Edge extension is also available as an alternate delivery path.
 
-**Version:** 1.1.2 (development)  
+**Version:** 1.1.2 (main; release packaging pending)  
 **Package:** Foundry VTT module (Cloud Relay delivery; browser extension optional)  
-**Status:** v1.1.2 custom-roll fix passed automated tests and initial live native-roll validation through the extension route. The extension-free Cloud Relay route still needs a live custom-roll confirmation; v1.1.1 remains the latest stable release.
+**Status:** The v1.1.2 custom-roll fix is merged into `main`, passes automated tests, and has been live-tested through the extension-free direct Cloud Relay path. v1.1.1 remains the latest published release until the v1.1.2 release is packaged.
 
 ## Project links
 
@@ -24,7 +24,7 @@ Roll on D&D Beyond and see the result appear in Foundry VTT chat. The Foundry mo
 - Captures completed D&D Beyond game-log roll events.
 - Reconstructs supported attacks, ability checks, saving throws, initiative, damage, and healing as native D&D 5e chat messages.
 - Preserves D&D Beyond's actual die results, including advantage and disadvantage d20 results.
-- Reconstructs standalone custom dice-roller rolls, including d100 and mixed dice, as native Foundry Roll chat messages using D&D Beyond's actual die results.
+- Reconstructs standalone custom dice-roller rolls, including d100 and mixed dice, as native Foundry Roll chat messages using D&D Beyond's actual die results; this works through the extension-free Cloud Relay path.
 - Coordinates WebSocket and DOM delivery to suppress duplicate cards and retain a fallback path.
 - Routes rolls to an eligible Foundry GM tab and supports actor mapping by D&D Beyond character ID.
 - Connects directly to the Cloud Relay from the Foundry module, with reconnect handling and session reattachment after a Foundry reload. This path does not require the browser extension.
@@ -87,7 +87,7 @@ This alternate path does not require your D&D Beyond password or CobaltSession c
 
 **Credential warning:** The CobaltSession cookie grants access to your D&D Beyond session. Never share it or paste it into an issue, chat, screenshot, or source file. The module stores the admin key and cookie in Foundry client settings, which are local to that browser but are not encrypted. The relay keeps the cookie in memory while a session is active. Anyone who controls the relay and its admin key may be able to use an active session. Use a private relay deployment and stop sessions when finished.
 
-See the [DDB Cloud Relay repository](https://github.com/mattswymer/DDB-Cloud-Relay) for deployment, configuration, and operational details.
+See the [DDB Cloud Relay repository](https://github.com/mattswymer/DDB-Cloud-Relay) for deployment, configuration, and operational details. The Foundry module and relay communicate using protocol 1; custom dice support is handled by the module receiver and does not require a relay deployment change.
 
 ## Troubleshooting
 
