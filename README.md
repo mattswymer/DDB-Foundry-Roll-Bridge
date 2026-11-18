@@ -10,7 +10,7 @@ Roll on D&D Beyond and see the result appear in Foundry VTT chat. The Foundry mo
 
 **Version:** 1.1.2 (development)  
 **Package:** Foundry VTT module (Cloud Relay delivery; browser extension optional)  
-**Status:** v1.1.2 custom-roll fix passed automated tests and initial live native-roll validation; v1.1.1 remains the latest stable release until v1.1.2 is published.
+**Status:** v1.1.2 custom-roll fix passed automated tests and initial live native-roll validation through the extension route. The extension-free Cloud Relay route still needs a live custom-roll confirmation; v1.1.1 remains the latest stable release.
 
 ## Project links
 
@@ -33,7 +33,7 @@ The module mirrors roll results. It does not synchronize characters, automatical
 
 ## Requirements
 
-- Google Chrome or Microsoft Edge.
+- A modern browser supported by Foundry VTT and D&D Beyond.
 - Foundry VTT 12 or later; tested against Foundry VTT 14.
 - The D&D 5e game system (dnd5e).
 - A Foundry GM session open in a supported browser tab.
@@ -83,15 +83,7 @@ This is the extension-free delivery path. The Foundry module opens the relay str
 
 This alternate path does not require your D&D Beyond password or CobaltSession cookie.
 
-### D&D Beyond Cloud Relay
-
-The Cloud Relay is a separate service that you or your administrator deploy and operate. It holds the active D&D Beyond CobaltSession cookie in server memory, exchanges it for short-lived tokens, and forwards live game-log events to the Foundry module.
-
-1. Install and enable the Foundry module.
-2. Open the module's **D&D Beyond Cloud Relay** settings.
-3. Enter the relay admin key and create a campaign profile with its D&D Beyond Game ID.
-4. Paste the CobaltSession cookie value when starting a relay session.
-5. Confirm the relay reports a connection to D&D Beyond and test one roll in Foundry chat.
+**Cloud Relay operation:** The relay is a separate service that you or your administrator deploy and operate. It holds the active D&D Beyond CobaltSession cookie in server memory, exchanges it for short-lived tokens, and forwards live game-log events to the Foundry module.
 
 **Credential warning:** The CobaltSession cookie grants access to your D&D Beyond session. Never share it or paste it into an issue, chat, screenshot, or source file. The module stores the admin key and cookie in Foundry client settings, which are local to that browser but are not encrypted. The relay keeps the cookie in memory while a session is active. Anyone who controls the relay and its admin key may be able to use an active session. Use a private relay deployment and stop sessions when finished.
 
@@ -120,7 +112,7 @@ Update the saved CobaltSession cookie in the Cloud Relay settings and start a ne
 
 ## Relay protocol
 
-The module and optional Cloud Relay share [protocol version 1](docs/relay-protocol.md). The module rejects missing or incompatible protocol handshakes; deploy compatible module and relay releases together.
+The module and Cloud Relay share [protocol version 1](docs/relay-protocol.md). The module rejects missing or incompatible protocol handshakes; deploy compatible module and relay releases together.
 
 ## Compatibility
 
