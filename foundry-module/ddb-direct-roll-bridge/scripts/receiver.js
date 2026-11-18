@@ -1,6 +1,6 @@
 (() => {
   const MODULE_ID = "ddb-direct-roll-bridge";
-  const MODULE_VERSION = globalThis.game?.modules?.get?.(MODULE_ID)?.version || "1.1.1";
+  const MODULE_VERSION = globalThis.game?.modules?.get?.(MODULE_ID)?.version || "1.1.2";
   const seen = new Set();
   const processing = new Set();
   const latestAttackContexts = new Map();
@@ -1017,13 +1017,6 @@
 
     document.addEventListener("DDB_DIRECT_ROLL_BRIDGE_WS_ROLL", event => {
       const payload = parseEventDetail(event.detail);
-      if (String(payload?.data?.action || "").trim().toLowerCase() === "custom") {
-        console.info("[ddb-direct-roll-bridge] Custom roll reached Foundry receiver", {
-          id: payload?.data?.rollId || null,
-          rollType: payload?.data?.rolls?.[0]?.rollType || null,
-          total: payload?.data?.rolls?.[0]?.result?.total ?? null
-        });
-      }
       if (!payload) {
         emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", { ok: false, reason: "bad-ws-event-detail", at: Date.now() });
         return;
