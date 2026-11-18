@@ -1,6 +1,6 @@
 (() => {
   const MODULE_ID = "ddb-direct-roll-bridge";
-  const MODULE_VERSION = globalThis.game?.modules?.get?.(MODULE_ID)?.version || "1.1.1";
+  const MODULE_VERSION = globalThis.game?.modules?.get?.(MODULE_ID)?.version || "1.1.2";
   const seen = new Set();
   const processing = new Set();
   const latestAttackContexts = new Map();
@@ -79,11 +79,25 @@
     return game.messages.find(message => message.getFlag?.(MODULE_ID, "ddbRollId") === id) || null;
   }
 
-  function isNativeRollEvent(event) {
+  function isFallbackEligibleEvent(event) {
+    // The standalone D&D Beyond dice roller does not have a character-sheet
+    // action to map. Accept any fulfilled roll with a complete, safe dice
+    // result so unsupported/custom roll types still reach Foundry chat.
+    if (event?.eventType !== "dice/roll/fulfilled" || !event?.data?.rollId) return false;
+
     const source = event?.data?.rolls?.[0];
-    const type = String(source?.rollType || "").toLowerCase();
-    return ["to hit", "check", "save", "damage", "heal"].includes(type) ||
-      (type === "roll" && /initiative/i.test(String(event?.data?.action || "")));
+    const sets = source?.diceNotation?.set;
+    const values = source?.result?.values;
+    const total = source?.result?.total;
+    if (!Array.isArray(sets) || !sets.length || !Array.isArray(values) || !values.length) return false;
+    if (total === null || total === undefined || !Number.isFinite(Number(total))) return false;
+    if (!values.every(value => Number.isFinite(Number(value)))) return false;
+
+    return sets.every(set => {
+      const dieType = String(set?.dieType || "");
+      const count = Number(set?.count || set?.dice?.length || 0);
+      return /^d\d+$/i.test(dieType) && Number.isInteger(count) && count > 0;
+    });
   }
 
   function buildFallbackRoll(event, reason) {
@@ -125,7 +139,9 @@
       diceSummary: diceParts.join("; "),
       dice: sets.map(set => ({ count: Number(set.count || set.dice?.length || 0) })),
       total,
-      rawText: `Native Foundry processing failed: ${String(reason || "unknown error")}`
+      rawText: reason === "Standalone D&D Beyond custom dice roll"
+        ? "Standalone custom dice roll captured from D&D Beyond."
+        : `Native Foundry processing failed: ${String(reason || "unknown error")}`
     };
   }
 
@@ -152,6 +168,107 @@
     const message = await ChatMessage.create(messageData);
     if (!message?.id) throw new Error("Foundry did not return a message for the fallback card");
     return message;
+  }
+
+  function buildNativeCustomRoll(event) {
+    const source = event?.data?.rolls?.[0];
+    const notation = source?.diceNotation;
+    const result = source?.result;
+    const sets = notation?.set;
+    const values = result?.values;
+    if (!Array.isArray(sets) || !sets.length || !Array.isArray(values) || !values.length) {
+      throw new Error("Custom roll is missing dice notation or individual die results");
+    }
+
+    const formulaParts = [];
+    let expectedDice = 0;
+    for (const set of sets) {
+      const dieType = String(set?.dieType || "").toLowerCase();
+      const count = Number(set?.count || set?.dice?.length || 0);
+      if (!/^d\d+$/.test(dieType) || !Number.isInteger(count) || count < 1) {
+        throw new Error("Custom roll contains an invalid die type or count");
+      }
+      let part = `${count}${dieType}`;
+      const operation = Number(set.operation || 0);
+      if (count > 1 && operation === 2) part += "kh1";
+      else if (count > 1 && operation === 1) part += "kl1";
+      else if (operation !== 0) throw new Error(`Unsupported custom dice operation: ${operation}`);
+      formulaParts.push(part);
+      expectedDice += count;
+    }
+
+    if (expectedDice !== values.length) {
+      throw new Error(`D&D Beyond supplied ${values.length} die results; notation expects ${expectedDice}`);
+    }
+    if (!values.every(value => Number.isInteger(Number(value)))) {
+      throw new Error("Custom roll contains a non-integer die result");
+    }
+
+    const constant = Number(notation.constant ?? result.constant ?? 0);
+    if (!Number.isFinite(constant)) throw new Error("Custom roll has an invalid constant modifier");
+    if (constant !== 0) formulaParts.push(String(constant));
+    const formula = formulaParts.join(" + ").replace(/\+ -/g, "-");
+
+    let rollData = {};
+    try {
+      const actor = resolveActorForEvent(event);
+      rollData = actor.getRollData();
+    } catch (_) {
+      // A standalone dice roll does not require a mapped actor.
+    }
+
+    const template = new Roll(formula, rollData);
+    const data = template.toJSON();
+    let valueOffset = 0;
+    for (const term of data.terms) {
+      if (term.faces) {
+        const count = Number(term.number || 1);
+        const faces = Number(term.faces);
+        const results = values.slice(valueOffset, valueOffset + count).map(value => {
+          const resultValue = Number(value);
+          if (resultValue < 1 || resultValue > faces) {
+            throw new Error(`Custom roll result ${resultValue} is outside d${faces}`);
+          }
+          return { result: resultValue, active: true, discarded: false };
+        });
+        if (results.length !== count) throw new Error("Custom roll dice terms do not match D&D Beyond results");
+        term.results = results;
+        valueOffset += count;
+      }
+      term.evaluated = true;
+    }
+    if (valueOffset !== values.length) throw new Error("Could not map all D&D Beyond die results to the Foundry roll");
+
+    data.evaluated = true;
+    data.total = Number(result.total);
+    const roll = Roll.fromData(data);
+    if (!Number.isFinite(Number(roll.total)) || Number(roll.total) !== Number(result.total)) {
+      throw new Error(`Reconstructed Foundry total ${roll.total} does not match D&D Beyond total ${result.total}`);
+    }
+    return roll;
+  }
+
+  async function postNativeCustomRoll(event) {
+    if (!game.user?.isGM) throw new Error("The Foundry session receiving rolls must be a GM");
+    const roll = buildNativeCustomRoll(event);
+    const character = String(event.data.context?.name || "D&D Beyond").trim();
+    const messageData = {
+      speaker: getSpeaker(character, event),
+      flavor: "Custom Roll",
+      flags: {
+        [MODULE_ID]: {
+          ddbRollId: event.data.rollId,
+          source: "ddb-websocket-custom",
+          characterId: event.entityId || event.data.context?.entityId || null
+        }
+      }
+    };
+    if (event.messageScope === "userId" || event.data.context?.messageScope === "userId") {
+      messageData.whisper = ChatMessage.getWhisperRecipients("GM").map(user => user.id);
+    }
+    const message = await roll.toMessage(messageData, { create: true });
+    if (!message?.id) throw new Error("Foundry did not create a native custom-roll chat message");
+    return { message, roll };
   }
 
   function normalizeItemName(name) {
@@ -654,6 +771,9 @@
     if (type === "save") return postNativeCheckOrSave(event, "save");
     if (type === "damage") return postNativeDamage(event);
     if (type === "heal") return postNativeHealing(event);
+    if (type === "roll" && String(event.data.action || "").trim().toLowerCase() === "custom") {
+      return postNativeCustomRoll(event);
+    }
     if (type === "roll" && /initiative/i.test(String(event.data.action || ""))) {
       return postNativeInitiative(event);
     }
@@ -765,6 +885,36 @@
       }
       processing.add(id);
 
+      const source = event?.data?.rolls?.[0];
+      const isCustomDiceRoll =
+        String(source?.rollType || "").toLowerCase() === "roll" &&
+        String(event?.data?.action || "").trim().toLowerCase() === "custom";
+
+      if (isCustomDiceRoll) {
+        if (!isFallbackEligibleEvent(event)) {
+          throw new Error("Standalone custom dice roll has incomplete or invalid dice results");
+        }
+        log("Received standalone D&D Beyond custom dice roll", {
+          id,
+          dice: source.diceNotation.set.map(set => ({
+            count: Number(set.count || set.dice?.length || 0),
+            dieType: String(set.dieType || "")
+          })),
+          total: source.result.total
+        });
+        const result = await postNativeCustomRoll(event);
+        if (!result?.message?.id) throw new Error("Native custom roll processing returned without creating a chat message");
+        processing.delete(id);
+        remember(id);
+        emitExtensionEvent("DDB_DIRECT_ROLL_BRIDGE_ACK", {
+          ok: true, id, messageId: result.message.id, native: true, custom: true, at: Date.now()
+        });
+        log("Posted native standalone custom dice roll to Foundry chat", {
+          id, messageId: result.message.id, formula: result.roll.formula, total: result.roll.total
+        });
+        return;
+      }
+
       const result = await postNativeEvent(event);
       if (!result?.message?.id) throw new Error("Native roll processing returned without creating a chat message");
       processing.delete(id);
@@ -803,7 +953,7 @@
         return;
       }
 
-      if (isNativeRollEvent(event)) {
+      if (isFallbackEligibleEvent(event)) {
         try {
           const fallback = await postFallbackCard(event, reason);
           remember(id);

@@ -41,6 +41,17 @@ test("DOM surfaces first: one WebSocket claim pairs and suppresses both", () => 
   assert.equal(h.submitted.length, 0);
 });
 
+test("standalone custom WebSocket roll suppresses matching popup and log DOM copies", () => {
+  const h = setup();
+  const custom = h.roll({ total: 40, character: "tyndall", action: "custom", rollType: "roll" });
+  h.coordinator.addWebSocket("custom-ws", custom);
+  h.coordinator.addDom("custom-popup", h.roll({ total: 40, character: "tyndall", action: "custom" }), "popup");
+  h.coordinator.addDom("custom-log", h.roll({ total: 40, character: "tyndall", action: "custom" }), "log");
+  h.coordinator.acknowledge("custom-ws", true);
+  assert.deepEqual(h.suppressed.map(x => x.cardId).sort(), ["custom-log", "custom-popup"]);
+  assert.equal(h.submitted.length, 0);
+});
+
 test("WebSocket-only roll creates no DOM fallback", () => {
   const h = setup();
   h.coordinator.addWebSocket("ws1", h.roll());
