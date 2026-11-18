@@ -9,6 +9,7 @@ All notable changes to DDB Direct Roll Bridge are documented here.
 - Reconstruct standalone D&D Beyond custom dice rolls (including d100 and mixed dice) as native Foundry Roll messages using the exact die results supplied by D&D Beyond.
 - Validate fulfilled roll IDs, dice notation, die types, individual results, and totals before posting; retain duplicate protection so each roll is created once.
 - Apply the fix in the shared Foundry receiver so it works with the direct Cloud Relay connection without requiring a browser extension.
+- Verify the extension-free custom-roll path live: custom rolls are received as native Foundry rolls and each is posted only once.
 
 
 ## [1.1.1] - 2026-11-16
