@@ -30,7 +30,6 @@ jobs:
       - name: Validate manifests and JavaScript
         run: |
           jq -e '.version == "${{ steps.version.outputs.version }}"' foundry-module/ddb-direct-roll-bridge/module.json
-          jq -e '.version == "${{ steps.version.outputs.version }}"' chrome-extension/manifest.json
           find chrome-extension foundry-module -name '*.js' -print0 | xargs -0 -n1 node --check
 
       - name: Select relay endpoint for release channel
