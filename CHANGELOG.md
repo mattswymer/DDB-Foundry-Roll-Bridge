@@ -4,7 +4,7 @@ All notable changes to DDB Direct Roll Bridge are documented here.
 
 ## [Unreleased]
 
-## [1.1.2] - 2026-11-16
+## [1.1.2] - 2026-11-17
 
 - Reconstruct standalone D&D Beyond custom dice rolls (including d100 and mixed dice) as native Foundry Roll messages using the exact die results supplied by D&D Beyond.
 - Validate fulfilled roll IDs, dice notation, die types, individual results, and totals before posting; retain duplicate protection so each roll is created once.
